@@ -49,6 +49,24 @@ log "Detected ${NPROC} CPU cores"
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
+# -----------------------------------------------------------------------------
+# Show output in terminal AND save logs (tee), while preserving exit codes.
+# -----------------------------------------------------------------------------
+run_tee() {
+    # Usage: run_tee /path/to/log "command with args"
+    local logfile="$1"; shift
+    # Print the command for visibility
+    echo -e "${BLUE}[CMD]${NC} $*"
+    # Run and tee output
+    "$@" 2>&1 | tee "$logfile"
+    # Preserve the command's exit code (not tee's)
+    local rc=${PIPESTATUS[0]}
+    if [ $rc -ne 0 ]; then
+        echo -e "${RED}[ERROR]${NC} Command failed (exit $rc). See: $logfile"
+        exit $rc
+    fi
+}
+
 #==============================================================================
 # STEP 1: Remove old LAMMPS installation
 #==============================================================================
@@ -75,14 +93,14 @@ fi
 # STEP 2: Update system
 #==============================================================================
 log "[2/8] Updating system packages..."
-sudo apt-get update -qq
-sudo apt-get upgrade -yqq
+sudo apt-get update
+sudo apt-get upgrade -y
 
 #==============================================================================
 # STEP 3: Install system dependencies (NO GUI tools)
 #==============================================================================
 log "[3/8] Installing build dependencies and CLI tools..."
-sudo apt-get install -yqq --no-install-recommends \
+sudo apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     git \
@@ -136,56 +154,24 @@ log "✓ System dependencies installed"
 #==============================================================================
 log "[4/8] Installing Python scientific packages..."
 
-# Upgrade pip first
-pip3 install --break-system-packages --no-cache-dir --upgrade pip setuptools wheel
+# Upgrade pip first (show output)
+run_tee /tmp/pip_upgrade.log pip3 install --break-system-packages --no-cache-dir --upgrade pip setuptools wheel
 
-# Install packages in batches to avoid memory issues
 log "  Installing core scientific stack..."
-pip3 install --break-system-packages --no-cache-dir \
-    numpy \
-    scipy \
-    matplotlib \
-    pandas
+run_tee /tmp/pip_core.log pip3 install --break-system-packages --no-cache-dir \
+    numpy scipy matplotlib pandas
 
 log "  Installing molecular dynamics tools..."
-pip3 install --break-system-packages --no-cache-dir \
-    ase \
-    ovito \
-    MDAnalysis \
-    pymatgen \
-    freud-analysis
+run_tee /tmp/pip_mdtools.log pip3 install --break-system-packages --no-cache-dir \
+    ase ovito MDAnalysis pymatgen freud-analysis
 
 log "  Installing analysis and utilities..."
-pip3 install --break-system-packages --no-cache-dir \
-    jupyter \
-    jupyterlab \
-    ipykernel \
-    tqdm \
-    pyyaml \
-    h5py \
-    netcdf4 \
-    seaborn \
-    plotly \
-    networkx \
-    scikit-learn
+run_tee /tmp/pip_analysis.log pip3 install --break-system-packages --no-cache-dir \
+    jupyter jupyterlab ipykernel tqdm pyyaml h5py netcdf4 seaborn plotly networkx scikit-learn
 
 log "  Installing advanced tools..."
-pip3 install --break-system-packages --no-cache-dir \
-    lmfit \
-    statsmodels \
-    sympy \
-    numba \
-    cython \
-    atomman \
-    matscipy \
-    phonopy \
-    spglib \
-    mendeleev \
-    periodictable \
-    tabulate \
-    rich \
-    click \
-    loguru
+run_tee /tmp/pip_advanced.log pip3 install --break-system-packages --no-cache-dir \
+    lmfit statsmodels sympy numba cython atomman matscipy phonopy spglib mendeleev periodictable tabulate rich click loguru
 
 log "✓ Python packages installed"
 
@@ -275,8 +261,8 @@ log "  This will take 15-30 minutes depending on CPU..."
 mkdir -p build
 cd build
 
-# Configure with CMake
-cmake ../cmake \
+# Configure with CMake (show + log)
+run_tee /tmp/lammps_cmake.log cmake ../cmake \
     -D CMAKE_BUILD_TYPE=Release \
     -D BUILD_MPI=yes \
     -D BUILD_OMP=yes \
@@ -333,28 +319,13 @@ cmake ../cmake \
     -D PKG_USER-CGDNA=yes \
     -D PKG_USER-DRUDE=yes \
     -D PKG_USER-MESONT=yes \
-    -D PKG_USER-PTM=yes \
-    > /tmp/lammps_cmake.log 2>&1
+    -D PKG_USER-PTM=yes
 
-if [ $? -ne 0 ]; then
-    error "CMake configuration failed. Check /tmp/lammps_cmake.log"
-fi
-
-log "  CMake configuration complete"
 log "  Building with ${NPROC} parallel jobs..."
+run_tee /tmp/lammps_build.log make -j"${NPROC}"
 
-# Build (with progress indicator)
-if ! make -j${NPROC} > /tmp/lammps_build.log 2>&1; then
-    error "LAMMPS compilation failed. Check /tmp/lammps_build.log"
-fi
-
-log "✓ LAMMPS compiled successfully"
-
-# Install
 log "  Installing LAMMPS to /usr/local..."
-if ! sudo make install > /tmp/lammps_install.log 2>&1; then
-    error "LAMMPS installation failed. Check /tmp/lammps_install.log"
-fi
+run_tee /tmp/lammps_install.log sudo make install
 
 log "✓ LAMMPS installed"
 
@@ -390,18 +361,12 @@ fi
 #==============================================================================
 # STEP 8: Install LAMMPS Python interface (OPTIONAL BUT RECOMMENDED)
 #==============================================================================
-# Python interface is VERY useful for:
-# - Scripting complex simulations
-# - Post-processing analysis
-# - Automated parameter sweeps
-# - Integration with Jupyter notebooks
-# - Using ASE, Ovito, and other Python tools with LAMMPS
-#==============================================================================
-
 log "[8/8] Installing LAMMPS Python interface..."
 cd ../python
 
-if ! pip3 install --break-system-packages --no-cache-dir . > /tmp/lammps_python.log 2>&1; then
+# Show output + log, but keep it optional (don't hard-fail the whole script)
+echo -e "${BLUE}[CMD]${NC} pip3 install --break-system-packages --no-cache-dir ."
+if ! (pip3 install --break-system-packages --no-cache-dir . 2>&1 | tee /tmp/lammps_python.log); then
     warn "LAMMPS Python interface installation failed (check /tmp/lammps_python.log)"
     warn "This is OPTIONAL - LAMMPS CLI will still work perfectly"
 else
@@ -447,7 +412,7 @@ lmp -help 2>&1 | grep -A50 "Installed packages" | grep -E "MEAM|VORONOI|PYTHON|E
 log "Cleaning up temporary files..."
 cd ~
 sudo rm -rf /tmp/lammps
-sudo apt-get autoremove -yqq
+sudo apt-get autoremove -y
 sudo apt-get clean
 
 #==============================================================================
@@ -460,7 +425,8 @@ if ! grep -q "# LAMMPS aliases" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'EOF'
 
 # LAMMPS environment
-export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
+-export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
++export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:${LD_LIBRARY_PATH:-}"
 
 # LAMMPS aliases
 alias lammps='lmp'
