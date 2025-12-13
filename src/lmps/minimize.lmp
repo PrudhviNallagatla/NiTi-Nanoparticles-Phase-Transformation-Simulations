@@ -16,7 +16,7 @@ pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
 # [OPTIMIZATION] Reduced skin distance for faster minimization
-neighbor    0.3 bin 
+neighbor    1.0 bin 
 neigh_modify delay 0 every 1 check yes
 
 # Hardware balancing
