@@ -217,12 +217,10 @@ warn "════════════════════════�
 warn ""
 warn "Quick install (run after this script completes):"
 warn ""
-warn "  cd /tmp"
-warn "  wget https://atomsk.univ-lille.fr/code/atomsk_b0.13.1_Linux-x86-64.tar.gz"
-warn "  tar -xzf atomsk_b0.13.1_Linux-x86-64.tar.gz"
-warn "  sudo mv atomsk /usr/local/bin/"
-warn "  sudo chmod +x /usr/local/bin/atomsk"
-warn "  atomsk --version"
+warn "   git clone https://github.com/pierrehirel/atomsk.git"
+warn "   cd atomsk/src"
+warn "   make atomsk"
+warn "   sudo make install"
 warn ""
 warn "Official docs: https://atomsk.univ-lille.fr/doc/en/"
 warn "═══════════════════════════════════════════════════════════════"
@@ -425,8 +423,7 @@ if ! grep -q "# LAMMPS aliases" ~/.bashrc 2>/dev/null; then
     cat >> ~/.bashrc << 'EOF'
 
 # LAMMPS environment
--export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
-+export LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:${LD_LIBRARY_PATH:-}"
+export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
 
 # LAMMPS aliases
 alias lammps='lmp'

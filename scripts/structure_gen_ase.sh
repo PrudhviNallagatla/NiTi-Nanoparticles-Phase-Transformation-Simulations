@@ -7,15 +7,15 @@ set -euo pipefail
 PROJECT_ROOT="/home/rimuru/workspace"
 SEED=42
 
-SIZE=20           # Diameter in nm
-SHAPE="blob"      # ✅ Use blob for EDM realism
+SIZE=10           # Diameter in nm
+SHAPE="sphere"      # sphere ellipsoid faceted rough blob	
 NI_PERCENT=50.0
 
 CORES=-1
 
 # ✅ CRITICAL: Grain size for polycrystalline structures
 # Set to 0 for SINGLE CRYSTAL
-GRAIN_SIZE=5.0    # Target grain diameter in nm (0 = single crystal)
+GRAIN_SIZE=0.0    # Target grain diameter in nm (0 = single crystal)
 
 # ✅ Defect concentrations
 VACANCIES=0.01           # 1% bulk vacancies
