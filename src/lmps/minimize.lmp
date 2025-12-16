@@ -31,8 +31,9 @@ variable MAX_ITER   equal 100000    # Max iterations safety cap
 variable MAX_EVAL   equal 1000000   # Max force eval safety cap
 
 # --- 4. TIMER & OUTPUT SETUP ---
-# Create a variable to calculate elapsed time in MINUTES
-variable mins equal timer(total)/60.0
+# FIXED: Use 'elapsed' instead of 'timer()' for compatibility
+variable cpu_time equal elapsed
+variable cpu_mins equal v_cpu_time/60.0
 
 # Setup Output Directory
 shell mkdir -p "${output_dir}"
@@ -58,9 +59,9 @@ compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
 
 # --- 7. THERMO OUTPUT CONFIGURATION ---
-# We add 'v_mins' to the output to track CPU time in minutes
+# We add 'v_cpu_mins' to the output to track CPU time in minutes
 thermo      100
-thermo_style custom step temp pe fmax fnorm v_mins
+thermo_style custom step temp pe fmax fnorm v_cpu_mins
 
 # Check Initial State
 run 0 post no
@@ -131,7 +132,7 @@ run 0 # Evaluate compute
 
 variable final_pe_core equal c_pe_core
 variable final_fmax equal fmax
-variable total_time equal v_mins
+variable total_time equal v_cpu_mins
 
 # 3. Validation Logic
 print " "
