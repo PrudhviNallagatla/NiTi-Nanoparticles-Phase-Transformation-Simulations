@@ -100,7 +100,7 @@ get_atom_count() {
 
 estimate_memory() {
     local atoms=$1
-    # MODIFIED: Increased to 500 bytes/atom for MEAM + Neighbor lists safety
+    # returns MB (integer)
     python3 -c "print(max(1, int(${atoms} * 500 / 1024 / 1024) + 1))"
 }
 
@@ -127,7 +127,7 @@ for datafile in "${DATA_FILES[@]}"; do
     ATOM_COUNTS["${structure_name}"]=${atoms}
     MEM_ESTIMATES["${structure_name}"]=${mem}
     echo "   • ${structure_name}"
-    echo "       Atoms: ${atoms} | RAM: ~${mem} GB | MPI ranks: ${MPI_RANKS}"
+    echo "       Atoms: ${atoms} | RAM: ~${mem} MB | MPI ranks: ${MPI_RANKS}"
 done
 
 # ============================================
@@ -150,12 +150,13 @@ for datafile in "${DATA_FILES[@]}"; do
     
     echo "   → Running ${structure_name}..."
     logfile="logs/min_${structure_name}.log"
-    
+
+    # Provide variables via environment to match minimize.lmp's getenv(...) logic
+    STRUCTURE_FILE="${datafile}" \
+    OUTPUT_DIR="${outdir}" \
+    POT_LIB="${POT_LIB}" \
+    POT_FILE="${POT_FILE}" \
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
-        -var structure_file "${datafile}" \
-        -var output_dir "${outdir}" \
-        -var pot_lib "${POT_LIB}" \
-        -var pot_file "${POT_FILE}" \
         -in src/lmps/minimize.lmp \
         2>&1 | tee "${logfile}"
     
@@ -183,7 +184,7 @@ for datafile in "${DATA_FILES[@]}"; do
     restart_dir="${outdir}/restart_files"
 
     marker="${outdir}/.thermal_cycle_complete"
-    output_check="${outdir}/restart.stage4_end"   # <-- replace final.data with this
+    output_check="${restart_dir}/restart.stage4_end"   # stage-end restarts now live in restart_dir
     logfile="logs/thermal_${structure_name}.log"
 
     if [[ -f "${marker}" ]]; then
@@ -203,22 +204,22 @@ for datafile in "${DATA_FILES[@]}"; do
     # 2. Fallback to rolling checkpoints (restart.rolling.*)
     # 3. Default to none (start fresh)
     latest_restart=$(ls -1t "${restart_dir}"/restart.stage*_end "${restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
-    
+
     if [[ -n "${latest_restart}" ]]; then
         echo "   ↳ Found restart checkpoint: $(basename "${latest_restart}")"
-        RESTART_ARGS=(-var restart_file "${latest_restart}")
+        restart_file="${latest_restart}"
     else
-        RESTART_ARGS=(-var restart_file none)
+        restart_file="none"
     fi
 
+    INPUT_DATA="${indata}" \
+    OUTPUT_DIR="${outdir}" \
+    RESTART_DIR="${restart_dir}" \
+    RESTART_FILE="${restart_file}" \
+    SEED="${SEED}" \
+    POT_LIB="${POT_LIB}" \
+    POT_FILE="${POT_FILE}" \
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
-        -var input_data "${indata}" \
-        -var output_dir "${outdir}" \
-        -var restart_dir "${restart_dir}" \
-        -var seed ${SEED} \
-        -var pot_lib "${POT_LIB}" \
-        -var pot_file "${POT_FILE}" \
-        "${RESTART_ARGS[@]}" \
         -in src/lmps/thermal_cycle.lmp \
         2>&1 | tee "${logfile}"
 

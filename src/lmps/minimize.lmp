@@ -10,11 +10,25 @@ boundary    s s s
 atom_style  atomic
 
 # --- VARIABLES ---
-# Default variables if not passed via command line
-if "$(is_defined(structure_file)) == 0" then "variable structure_file string 'initial_structure.data'"
-if "$(is_defined(output_dir)) == 0"     then "variable output_dir string 'minimization_output'"
-if "$(is_defined(pot_lib)) == 0"        then "variable pot_lib string 'library.meam'"
-if "$(is_defined(pot_file)) == 0"       then "variable pot_file string 'NiTi.meam'"
+# Defaults (LAMMPS 2Aug2023-compatible):
+# Override via environment variables (preferred): STRUCTURE_FILE, OUTPUT_DIR, POT_LIB, POT_FILE
+# (lowercase variants also supported)
+
+variable structure_file string "$(getenv STRUCTURE_FILE)"
+if "${structure_file} == ''" then "variable structure_file string '$(getenv structure_file)'"
+if "${structure_file} == ''" then "variable structure_file string 'initial_structure.data'"
+
+variable output_dir string "$(getenv OUTPUT_DIR)"
+if "${output_dir} == ''" then "variable output_dir string '$(getenv output_dir)'"
+if "${output_dir} == ''" then "variable output_dir string 'minimization_output'"
+
+variable pot_lib string "$(getenv POT_LIB)"
+if "${pot_lib} == ''" then "variable pot_lib string '$(getenv pot_lib)'"
+if "${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+
+variable pot_file string "$(getenv POT_FILE)"
+if "${pot_file} == ''" then "variable pot_file string '$(getenv pot_file)'"
+if "${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
 
 # --- SETUP ---
 read_data   ${structure_file}

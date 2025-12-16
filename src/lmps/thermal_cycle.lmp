@@ -10,13 +10,36 @@ dimension   3
 boundary    s s s   
 atom_style  atomic
 
-# --- VARIABLES & DEFAULTS ---
-if "$(is_defined(input_data)) == 0"     then "variable input_data string 'minimized.data'"
-if "$(is_defined(restart_file)) == 0"   then "variable restart_file string 'none'"
-if "$(is_defined(output_dir)) == 0"     then "variable output_dir string 'hysteresis_output'"
-if "$(is_defined(restart_dir)) == 0"    then "variable restart_dir string 'restarts'"
-if "$(is_defined(pot_lib)) == 0"        then "variable pot_lib string 'library.meam'"
-if "$(is_defined(pot_file)) == 0"       then "variable pot_file string 'NiTi.meam'"
+# --- VARIABLES & DEFAULTS (LAMMPS 2Aug2023-compatible; no is_defined()) ---
+# Prefer environment variables (uppercase), fall back to lowercase, then hard defaults.
+
+variable input_data string "$(getenv INPUT_DATA)"
+if "${input_data} == ''" then "variable input_data string '$(getenv input_data)'"
+if "${input_data} == ''" then "variable input_data string 'minimized.data'"
+
+variable restart_file string "$(getenv RESTART_FILE)"
+if "${restart_file} == ''" then "variable restart_file string '$(getenv restart_file)'"
+if "${restart_file} == ''" then "variable restart_file string 'none'"
+
+variable output_dir string "$(getenv OUTPUT_DIR)"
+if "${output_dir} == ''" then "variable output_dir string '$(getenv output_dir)'"
+if "${output_dir} == ''" then "variable output_dir string 'hysteresis_output'"
+
+variable restart_dir string "$(getenv RESTART_DIR)"
+if "${restart_dir} == ''" then "variable restart_dir string '$(getenv restart_dir)'"
+if "${restart_dir} == ''" then "variable restart_dir string 'restarts'"
+
+variable pot_lib string "$(getenv POT_LIB)"
+if "${pot_lib} == ''" then "variable pot_lib string '$(getenv pot_lib)'"
+if "${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+
+variable pot_file string "$(getenv POT_FILE)"
+if "${pot_file} == ''" then "variable pot_file string '$(getenv pot_file)'"
+if "${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
+
+variable seed string "$(getenv SEED)"
+if "${seed} == ''" then "variable seed string '$(getenv seed)'"
+if "${seed} == ''" then "variable seed string '12345'"
 
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
@@ -66,7 +89,7 @@ variable    end_stage4  equal ${end_stage3}+${run_hold}
 
 # Velocity Init (Only if fresh start)
 if "$(step) == 0" then &
-   "velocity all create ${T_high} 12345 mom yes rot yes dist gaussian"
+   "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
 
 variable stage_id equal -1
 
@@ -162,7 +185,7 @@ if "$(step) < ${end_stage0}" then &
    "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
    "run ${end_stage0} upto" &
    "unfix 1" &
-   "write_restart ${output_dir}/restart.stage0_end"
+   "write_restart ${restart_dir}/restart.stage0_end"
 
 # --- STAGE 1: COOLING (Forward Transformation A -> M) ---
 if "$(step) < ${end_stage1}" then &
@@ -171,7 +194,7 @@ if "$(step) < ${end_stage1}" then &
    "fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}" &
    "run ${end_stage1} upto" &
    "unfix 1" &
-   "write_restart ${output_dir}/restart.stage1_end"
+   "write_restart ${restart_dir}/restart.stage1_end"
 
 # --- STAGE 2: HOLD LOW (Relax Martensite) ---
 if "$(step) < ${end_stage2}" then &
@@ -180,7 +203,7 @@ if "$(step) < ${end_stage2}" then &
    "fix 1 all nvt temp ${T_low} ${T_low} ${tdamp}" &
    "run ${end_stage2} upto" &
    "unfix 1" &
-   "write_restart ${output_dir}/restart.stage2_end"
+   "write_restart ${restart_dir}/restart.stage2_end"
 
 # --- STAGE 3: HEATING (Reverse Transformation M -> A) ---
 if "$(step) < ${end_stage3}" then &
@@ -189,7 +212,7 @@ if "$(step) < ${end_stage3}" then &
    "fix 1 all nvt temp ${T_low} ${T_high} ${tdamp}" &
    "run ${end_stage3} upto" &
    "unfix 1" &
-   "write_restart ${output_dir}/restart.stage3_end"
+   "write_restart ${restart_dir}/restart.stage3_end"
 
 # --- STAGE 4: HOLD HIGH (Final Recovery) ---
 if "$(step) < ${end_stage4}" then &
@@ -198,6 +221,6 @@ if "$(step) < ${end_stage4}" then &
    "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
    "run ${end_stage4} upto" &
    "unfix 1" &
-   "write_restart ${output_dir}/restart.stage4_end"
+   "write_restart ${restart_dir}/restart.stage4_end"
 
 print "SIMULATION COMPLETE."

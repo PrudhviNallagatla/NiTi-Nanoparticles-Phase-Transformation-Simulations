@@ -81,15 +81,11 @@ for datafile in "${DATA_FILES[@]}"; do
   logfile="${LOG_DIR}/minimize_${name}.log"
 
   echo "  → minimizing ${name}"
-  run_lammps "${logfile}" \
-    -var restart_file "none" \
-    -var input_data "${datafile}" \
-    -var output_dir "${min_dir}" \
-    -var restart_dir "${min_restart_dir}" \
-    -var pot_lib "${POT_LIB}" \
-    -var pot_file "${POT_FILE}" \
-    -var seed "${SEED}" \
-    -in "${MINIMIZE_IN}"
+  STRUCTURE_FILE="${datafile}" \
+  OUTPUT_DIR="${min_dir}" \
+  POT_LIB="${POT_LIB}" \
+  POT_FILE="${POT_FILE}" \
+  mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" -in "${MINIMIZE_IN}" 2>&1 | tee "${logfile}"
 
   [[ -f "${minimized}" ]] || { echo "ERROR: minimize did not create ${minimized}" >&2; exit 1; }
   touch "${marker}"
@@ -109,28 +105,17 @@ for datafile in "${DATA_FILES[@]}"; do
   thermal_dir="${RAW_OUT_ROOT}/${name}/thermal"
   thermal_restart_dir="${thermal_dir}/restarts"
   marker="${thermal_dir}/.thermal_complete"
-  check_file="${thermal_dir}/${THERMAL_HIGH_RESTART_NAME}"
-
-  if [[ -f "${marker}" ]]; then
-    echo "  ✓ ${name} thermal already done"
-    continue
-  fi
-
-  [[ -f "${minimized}" ]] || { echo "ERROR: missing ${minimized}" >&2; exit 1; }
-
-  mkdir -p "${thermal_dir}" "${thermal_restart_dir}"
-  logfile="${LOG_DIR}/thermal_${name}.log"
+  check_file="${thermal_restart_dir}/${THERMAL_HIGH_RESTART_NAME}"
 
   echo "  → thermal ${name}"
-  run_lammps "${logfile}" \
-    -var restart_file "none" \
-    -var input_data "${minimized}" \
-    -var output_dir "${thermal_dir}" \
-    -var restart_dir "${thermal_restart_dir}" \
-    -var pot_lib "${POT_LIB}" \
-    -var pot_file "${POT_FILE}" \
-    -var seed "${SEED}" \
-    -in "${THERMAL_IN}"
+  INPUT_DATA="${minimized}" \
+  OUTPUT_DIR="${thermal_dir}" \
+  RESTART_DIR="${thermal_restart_dir}" \
+  RESTART_FILE="none" \
+  POT_LIB="${POT_LIB}" \
+  POT_FILE="${POT_FILE}" \
+  SEED="${SEED}" \
+  mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" -in "${THERMAL_IN}" 2>&1 | tee "${logfile}"
 
   [[ -f "${check_file}" ]] || { echo "ERROR: thermal did not create ${check_file}" >&2; exit 1; }
   touch "${marker}"
@@ -147,7 +132,7 @@ for datafile in "${DATA_FILES[@]}"; do
 
   name="$(get_base_name "${datafile}")"
   thermal_dir="${RAW_OUT_ROOT}/${name}/thermal"
-  restart_hi="${thermal_dir}/${THERMAL_HIGH_RESTART_NAME}"
+  restart_hi="${thermal_restart_dir}/${THERMAL_HIGH_RESTART_NAME}"
 
   se_dir="${RAW_OUT_ROOT}/${name}/se"
   se_restart_dir="${se_dir}/restarts"
@@ -188,7 +173,7 @@ for datafile in "${DATA_FILES[@]}"; do
 
   name="$(get_base_name "${datafile}")"
   thermal_dir="${RAW_OUT_ROOT}/${name}/thermal"
-  restart_lo="${thermal_dir}/${THERMAL_LOW_RESTART_NAME}"
+  restart_lo="${thermal_restart_dir}/${THERMAL_LOW_RESTART_NAME}"
 
   sme_dir="${RAW_OUT_ROOT}/${name}/sme"
   sme_restart_dir="${sme_dir}/restarts"
@@ -205,15 +190,14 @@ for datafile in "${DATA_FILES[@]}"; do
   logfile="${LOG_DIR}/sme_${name}.log"
 
   echo "  → SME ${name}"
-  run_lammps "${logfile}" \
-    -var restart_file "${restart_lo}" \
-    -var input_data "unused.data" \
-    -var output_dir "${sme_dir}" \
-    -var restart_dir "${sme_restart_dir}" \
-    -var pot_lib "${POT_LIB}" \
-    -var pot_file "${POT_FILE}" \
-    -var seed "${SEED}" \
-    -in "${SME_IN}"
+  INPUT_DATA="unused.data" \
+  OUTPUT_DIR="${sme_dir}" \
+  RESTART_DIR="${sme_restart_dir}" \
+  RESTART_FILE="${restart_lo}" \
+  POT_LIB="${POT_LIB}" \
+  POT_FILE="${POT_FILE}" \
+  SEED="${SEED}" \
+  mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" -in "${SME_IN}" 2>&1 | tee "${logfile}"
 
   touch "${marker}"
 done

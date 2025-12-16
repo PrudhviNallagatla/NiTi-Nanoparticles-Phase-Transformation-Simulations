@@ -10,13 +10,39 @@ dimension   3
 boundary    s s s
 atom_style  atomic
 
-# --- VARIABLES & INPUTS ---
-if "$(is_defined(input_data)) == 0"     then "variable input_data string 'minimized.data'"
-if "$(is_defined(restart_file)) == 0"   then "variable restart_file string 'none'"
-if "$(is_defined(output_dir)) == 0"     then "variable output_dir string 'sme_output'"
-if "$(is_defined(restart_dir)) == 0"    then "variable restart_dir string 'restarts'"
-if "$(is_defined(pot_lib)) == 0"        then "variable pot_lib string 'library.meam'"
-if "$(is_defined(pot_file)) == 0"       then "variable pot_file string 'NiTi.meam'"
+# --- VARIABLES & DEFAULTS (LAMMPS 2Aug2023-compatible; no is_defined()) ---
+# Prefer environment variables (uppercase), fall back to lowercase, then hard defaults.
+
+variable input_data string "$(getenv INPUT_DATA)"
+if "${input_data} == ''" then "variable input_data string '$(getenv input_data)'"
+if "${input_data} == ''" then "variable input_data string 'minimized.data'"
+
+variable restart_file string "$(getenv RESTART_FILE)"
+if "${restart_file} == ''" then "variable restart_file string '$(getenv restart_file)'"
+if "${restart_file} == ''" then "variable restart_file string 'none'"
+
+variable output_dir string "$(getenv OUTPUT_DIR)"
+if "${output_dir} == ''" then "variable output_dir string '$(getenv output_dir)'"
+if "${output_dir} == ''" then "variable output_dir string 'sme_output'"
+
+variable restart_dir string "$(getenv RESTART_DIR)"
+if "${restart_dir} == ''" then "variable restart_dir string '$(getenv restart_dir)'"
+if "${restart_dir} == ''" then "variable restart_dir string 'restarts'"
+
+variable pot_lib string "$(getenv POT_LIB)"
+if "${pot_lib} == ''" then "variable pot_lib string '$(getenv pot_lib)'"
+if "${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+
+variable pot_file string "$(getenv POT_FILE)"
+if "${pot_file} == ''" then "variable pot_file string '$(getenv pot_file)'"
+if "${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
+
+variable seed string "$(getenv SEED)"
+if "${seed} == ''" then "variable seed string '$(getenv seed)'"
+if "${seed} == ''" then "variable seed string '12345'"
+
+# restart cadence (was used but never defined)
+variable restart_every equal 10000
 
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
@@ -61,18 +87,17 @@ variable end3 equal ${end2}+${unload_steps}
 variable end4 equal ${end3}+${heat_steps}
 variable end5 equal ${end4}+${hold_high}
 
-# --- PERSISTENCE LOGIC (The Fix) ---
-# We check if a parameter file exists. If so, we load reference values (Lz_ref, z_hi0, etc.)
-# This ensures that on a restart, we don't overwrite them with wrong values.
+# --- PERSISTENCE LOGIC (Restart-proof reference state) ---
 variable param_file string "${output_dir}/ref_params.lmp"
 
-# Default values (overwritten if file exists)
+# Default values (overwritten if ref_params.lmp contains saved values)
 variable Lz_ref equal 0.0
 variable z_hi0  equal 0.0
 variable z_lo0  equal 0.0
 
-# Attempt to include the file (will fail silently if not found, which is fine for fresh run)
-if "$(is_file(v_param_file))" then "include ${param_file}"
+# Make sure the file exists; empty include is OK and avoids is_file()
+shell touch "${param_file}"
+include ${param_file}
 
 # --- COMPUTES ---
 compute com all com
@@ -130,6 +155,7 @@ fix mom all momentum 100 linear 1 1 1 angular
 
 # Outputs
 restart ${restart_every} ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
+
 thermo 1000
 thermo_style custom step temp c_T_core v_sigma_zz_GPa v_frac_aus v_Rg v_strain
 
@@ -148,7 +174,7 @@ if "$(step) < ${end0}" then &
   "fix nvt all nvt temp ${T_high} ${T_low} ${tdamp}" &
   "run ${end0} upto" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage0_end"
+  "write_restart ${restart_dir}/restart.stage0_end"
 
 # --- STAGE 1: HOLD LOW ---
 if "$(step) < ${end1}" then &
@@ -156,14 +182,14 @@ if "$(step) < ${end1}" then &
   "fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}" &
   "run ${end1} upto" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage1_end"
+  "write_restart ${restart_dir}/restart.stage1_end"
 
 # --- CAPTURE REFERENCE STATE (CRITICAL) ---
 # We calculate and SAVE the reference state so restarts know where 'zero' strain is.
 # We only do this if we just finished Stage 1 (approximately).
 if "$(step) == ${end1}" then &
   "run 0" &
-  "variable current_Lz equal ${Lz}" &
+  "variable current_Lz equal v_Lz" &
   "variable current_zhi equal c_zmax" &
   "variable current_zlo equal c_zmin" &
   "print '# Reference Parameters for SME Loading' file ${param_file}" &
@@ -188,7 +214,7 @@ if "$(step) < ${end2}" then &
   "unfix wall_hi" &
   "unfix wall_lo" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage2_end"
+  "write_restart ${restart_dir}/restart.stage2_end"
 
 # --- STAGE 3: UNLOADING ---
 if "$(step) < ${end3}" then &
@@ -196,7 +222,7 @@ if "$(step) < ${end3}" then &
   "fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}" &
   "run ${end3} upto" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage3_end"
+  "write_restart ${restart_dir}/restart.stage3_end"
 
 # --- STAGE 4: HEATING (RECOVERY) ---
 if "$(step) < ${end4}" then &
@@ -204,7 +230,7 @@ if "$(step) < ${end4}" then &
   "fix nvt all nvt temp ${T_low} ${T_high} ${tdamp}" &
   "run ${end4} upto" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage4_end"
+  "write_restart ${restart_dir}/restart.stage4_end"
 
 # --- STAGE 5: FINAL HOLD ---
 if "$(step) < ${end5}" then &
@@ -212,6 +238,6 @@ if "$(step) < ${end5}" then &
   "fix nvt all nvt temp ${T_high} ${T_high} ${tdamp}" &
   "run ${end5} upto" &
   "unfix nvt" &
-  "write_restart ${output_dir}/restart.stage5_end"
+  "write_restart ${restart_dir}/restart.stage5_end"
 
 print "SME CYCLE COMPLETE."

@@ -179,11 +179,12 @@ for datafile in "${DATA_FILES[@]}"; do
     
     # REMOVED --allow-run-as-root
     # UPDATED to use dynamic MPI_RANKS
+    # UPDATED: pass settings via environment (matches minimize.lmp getenv(...) logic)
+    STRUCTURE_FILE="${datafile}" \
+    OUTPUT_DIR="${outdir}" \
+    POT_LIB="${POT_LIB}" \
+    POT_FILE="${POT_FILE}" \
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
-        -var structure_file "${datafile}" \
-        -var output_dir "${outdir}" \
-        -var pot_lib "${POT_LIB}" \
-        -var pot_file "${POT_FILE}" \
         -in src/lmps/minimize.lmp \
         2>&1 | tee "${logfile}"
     
@@ -235,12 +236,15 @@ for datafile in "${DATA_FILES[@]}"; do
     
     # REMOVED --allow-run-as-root
     # UPDATED to use dynamic MPI_RANKS
+    # UPDATED: pass settings via environment (matches se.lmp getenv(...) logic)
+    INPUT_DATA="${indata}" \
+    OUTPUT_DIR="${outdir}" \
+    RESTART_DIR="${outdir}/restarts" \
+    RESTART_FILE="none" \
+    SEED="${SEED}" \
+    POT_LIB="${POT_LIB}" \
+    POT_FILE="${POT_FILE}" \
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
-        -var input_data "${indata}" \
-        -var output_dir "${outdir}" \
-        -var seed ${SEED} \
-        -var pot_lib "${POT_LIB}" \
-        -var pot_file "${POT_FILE}" \
         -in src/lmps/se.lmp \
         2>&1 | tee "${logfile}"
         
