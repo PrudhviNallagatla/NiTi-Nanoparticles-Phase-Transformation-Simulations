@@ -106,12 +106,33 @@ for datafile in "${DATA_FILES[@]}"; do
   thermal_restart_dir="${thermal_dir}/restarts"
   marker="${thermal_dir}/.thermal_complete"
   check_file="${thermal_restart_dir}/${THERMAL_HIGH_RESTART_NAME}"
+  logfile="${LOG_DIR}/thermal_${name}.log"
+
+  if [[ -f "${marker}" ]]; then
+    echo "  ✓ ${name} thermal already done"
+    continue
+  fi
+
+  [[ -f "${minimized}" ]] || { echo "ERROR: missing ${minimized}" >&2; exit 1; }
+
+  mkdir -p "${thermal_dir}" "${thermal_restart_dir}"
+
+  # --- ROBUST RESTART LOGIC ---
+  latest_restart=$(ls -1t "${thermal_restart_dir}"/restart.stage*_end "${thermal_restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
+
+  # Construct START_CMD in bash
+  if [[ -n "${latest_restart}" ]]; then
+    echo "  ↳ Found restart: $(basename "${latest_restart}")"
+    START_CMD="read_restart ${latest_restart}"
+  else
+    START_CMD="read_data ${minimized}"
+  fi
 
   echo "  → thermal ${name}"
   INPUT_DATA="${minimized}" \
   OUTPUT_DIR="${thermal_dir}" \
   RESTART_DIR="${thermal_restart_dir}" \
-  RESTART_FILE="none" \
+  START_CMD="${START_CMD}" \
   POT_LIB="${POT_LIB}" \
   POT_FILE="${POT_FILE}" \
   SEED="${SEED}" \
@@ -131,7 +152,7 @@ for datafile in "${DATA_FILES[@]}"; do
   [[ -f "${datafile}" ]] || continue
 
   name="$(get_base_name "${datafile}")"
-  thermal_dir="${RAW_OUT_ROOT}/${name}/thermal"
+  thermal_restart_dir="${RAW_OUT_ROOT}/${name}/thermal/restarts"
   restart_hi="${thermal_restart_dir}/${THERMAL_HIGH_RESTART_NAME}"
 
   se_dir="${RAW_OUT_ROOT}/${name}/se"
@@ -148,16 +169,18 @@ for datafile in "${DATA_FILES[@]}"; do
   mkdir -p "${se_dir}" "${se_restart_dir}"
   logfile="${LOG_DIR}/se_${name}.log"
 
+  # Construct START_CMD for SE
+  START_CMD="read_restart ${restart_hi}"
+
   echo "  → SE ${name}"
-  run_lammps "${logfile}" \
-    -var restart_file "${restart_hi}" \
-    -var input_data "unused.data" \
-    -var output_dir "${se_dir}" \
-    -var restart_dir "${se_restart_dir}" \
-    -var pot_lib "${POT_LIB}" \
-    -var pot_file "${POT_FILE}" \
-    -var seed "${SEED}" \
-    -in "${SE_IN}"
+  INPUT_DATA="unused.data" \
+  OUTPUT_DIR="${se_dir}" \
+  RESTART_DIR="${se_restart_dir}" \
+  START_CMD="${START_CMD}" \
+  POT_LIB="${POT_LIB}" \
+  POT_FILE="${POT_FILE}" \
+  SEED="${SEED}" \
+  mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" -in "${SE_IN}" 2>&1 | tee "${logfile}"
 
   touch "${marker}"
 done
@@ -172,7 +195,7 @@ for datafile in "${DATA_FILES[@]}"; do
   [[ -f "${datafile}" ]] || continue
 
   name="$(get_base_name "${datafile}")"
-  thermal_dir="${RAW_OUT_ROOT}/${name}/thermal"
+  thermal_restart_dir="${RAW_OUT_ROOT}/${name}/thermal/restarts"
   restart_lo="${thermal_restart_dir}/${THERMAL_LOW_RESTART_NAME}"
 
   sme_dir="${RAW_OUT_ROOT}/${name}/sme"
@@ -189,11 +212,22 @@ for datafile in "${DATA_FILES[@]}"; do
   mkdir -p "${sme_dir}" "${sme_restart_dir}"
   logfile="${LOG_DIR}/sme_${name}.log"
 
+  # --- ROBUST RESTART LOGIC FOR SME ---
+  # Check if SME was interrupted and has its own restart
+  latest_sme_restart=$(ls -1t "${sme_restart_dir}"/restart.stage*_end "${sme_restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
+
+  if [[ -n "${latest_sme_restart}" ]]; then
+    echo "  ↳ Resuming SME from: $(basename "${latest_sme_restart}")"
+    START_CMD="read_restart ${latest_sme_restart}"
+  else
+    START_CMD="read_restart ${restart_lo}"
+  fi
+
   echo "  → SME ${name}"
   INPUT_DATA="unused.data" \
   OUTPUT_DIR="${sme_dir}" \
   RESTART_DIR="${sme_restart_dir}" \
-  RESTART_FILE="${restart_lo}" \
+  START_CMD="${START_CMD}" \
   POT_LIB="${POT_LIB}" \
   POT_FILE="${POT_FILE}" \
   SEED="${SEED}" \

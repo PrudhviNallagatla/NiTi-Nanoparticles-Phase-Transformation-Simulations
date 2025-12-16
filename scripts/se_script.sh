@@ -212,9 +212,10 @@ for datafile in "${DATA_FILES[@]}"; do
     structure_name=$(get_base_name "${datafile}")
     indata="data/raw_output/${structure_name}/minimize/minimized.data"
     outdir="data/raw_output/${structure_name}/se"
+    restart_dir="${outdir}/restarts"
     marker="${outdir}/.se_complete"
     output_check_1="${outdir}/final.data"
-    output_check_2="${outdir}/stress_strain.txt"
+    output_check_2="${outdir}/se_data.txt"
     
     if [[ -f "${marker}" ]]; then
         echo "   ✓ ${structure_name} (already done)"
@@ -226,7 +227,7 @@ for datafile in "${DATA_FILES[@]}"; do
         continue
     fi
     
-    mkdir -p "${outdir}"
+    mkdir -p "${outdir}" "${restart_dir}"
     
     mem="${MEM_ESTIMATES[$structure_name]}"
 
@@ -234,13 +235,23 @@ for datafile in "${DATA_FILES[@]}"; do
     
     logfile="logs/se_${structure_name}.log"
     
-    # REMOVED --allow-run-as-root
-    # UPDATED to use dynamic MPI_RANKS
-    # UPDATED: pass settings via environment (matches se.lmp getenv(...) logic)
+    # --- ROBUST RESTART LOGIC FOR SE ---
+    # Check if SE was interrupted and has its own restart
+    latest_se_restart=$(ls -1t "${restart_dir}"/restart.se_stage*_end "${restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
+
+    # Construct START_CMD in bash
+    if [[ -n "${latest_se_restart}" ]]; then
+        echo "  ↳ Resuming SE from: $(basename "${latest_se_restart}")"
+        START_CMD="read_restart ${latest_se_restart}"
+    else
+        START_CMD="read_data ${indata}"
+    fi
+    
+    # Pass START_CMD as environment variable to LAMMPS
     INPUT_DATA="${indata}" \
     OUTPUT_DIR="${outdir}" \
-    RESTART_DIR="${outdir}/restarts" \
-    RESTART_FILE="none" \
+    RESTART_DIR="${restart_dir}" \
+    START_CMD="${START_CMD}" \
     SEED="${SEED}" \
     POT_LIB="${POT_LIB}" \
     POT_FILE="${POT_FILE}" \

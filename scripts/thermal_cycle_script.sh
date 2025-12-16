@@ -184,7 +184,7 @@ for datafile in "${DATA_FILES[@]}"; do
     restart_dir="${outdir}/restart_files"
 
     marker="${outdir}/.thermal_cycle_complete"
-    output_check="${restart_dir}/restart.stage4_end"   # stage-end restarts now live in restart_dir
+    output_check="${restart_dir}/restart.stage4_end"
     logfile="logs/thermal_${structure_name}.log"
 
     if [[ -f "${marker}" ]]; then
@@ -200,22 +200,21 @@ for datafile in "${DATA_FILES[@]}"; do
     mkdir -p "${outdir}" "${restart_dir}"
 
     # --- ROBUST RESTART LOGIC ---
-    # 1. Prefer completed stage boundaries (restart.stage*_end)
-    # 2. Fallback to rolling checkpoints (restart.rolling.*)
-    # 3. Default to none (start fresh)
     latest_restart=$(ls -1t "${restart_dir}"/restart.stage*_end "${restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
 
+    # Construct START_CMD based on restart availability
     if [[ -n "${latest_restart}" ]]; then
         echo "   ↳ Found restart checkpoint: $(basename "${latest_restart}")"
-        restart_file="${latest_restart}"
+        START_CMD="read_restart ${latest_restart}"
     else
-        restart_file="none"
+        START_CMD="read_data ${indata}"
     fi
 
+    # Pass START_CMD as environment variable to LAMMPS
     INPUT_DATA="${indata}" \
     OUTPUT_DIR="${outdir}" \
     RESTART_DIR="${restart_dir}" \
-    RESTART_FILE="${restart_file}" \
+    START_CMD="${START_CMD}" \
     SEED="${SEED}" \
     POT_LIB="${POT_LIB}" \
     POT_FILE="${POT_FILE}" \
