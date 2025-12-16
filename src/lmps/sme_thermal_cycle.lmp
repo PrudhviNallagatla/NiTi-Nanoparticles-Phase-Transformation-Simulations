@@ -13,6 +13,10 @@ atom_style  atomic
 # --- INPUT (Driven by Shell Script) ---
 read_data   ${input_data}
 
+# Ensure correct masses for temperature/kinetics (assumes type 1=Ni, type 2=Ti)
+mass 1 58.6934
+mass 2 47.867
+
 # --- POTENTIAL ---
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
@@ -50,30 +54,34 @@ velocity all create ${T_high} 492845 dist gaussian
 fix freeze_mom all momentum 1000 linear 1 1 1 angular
 
 # --- DEFINE CORE (Exclude Surface) ---
-# Compute COM using reduce instead of xcm()
-compute com_x all reduce ave x
-compute com_y all reduce ave y
-compute com_z all reduce ave z
-variable xcm equal c_com_x
-variable ycm equal c_com_y
-variable zcm equal c_com_z
+# Use true mass-weighted COM (important for Ni/Ti)
+compute com all com
+variable xcm equal c_com[1]
+variable ycm equal c_com[2]
+variable zcm equal c_com[3]
 
-# Calculate distance for each atom from the COM
+# Radial distance squared from COM
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 
-# Get bounds instead of using bound()
-compute xmin_all all reduce min x
-compute xmax_all all reduce max x
-variable x_span equal c_xmax_all-c_xmin_all
+# Robust particle radius estimate: max(rsq) over atoms
+compute r2max all reduce max v_rsq
 
-# Define Core Radius as ~80% of the particle radius
-variable rcut equal 0.4*v_x_span 
-variable rcut_sq equal v_rcut*v_rcut
+# Define Core Radius as ~80% of particle radius (rcut^2 = 0.8^2 * rmax^2 = 0.64*rmax^2)
+variable rcut_sq equal 0.64*c_r2max
+variable rcut    equal sqrt(v_rcut_sq)
 
-# Static group definition (more stable for long runs)
-run 0  # Update computes
-group core dynamic all var rsq every 1000
-group surface subtract all core
+# --- IMPORTANT: dynamic groups can't be used with "group ... subtract" ---
+# Create boolean masks and define BOTH groups as dynamic.
+variable core_mask    atom (v_rsq <  v_rcut_sq)
+variable surface_mask atom (v_rsq >= v_rcut_sq)
+
+# Run 0 needs an integrator to avoid "atoms won't move" warning
+fix __int all nve
+run 0
+unfix __int
+
+group core    dynamic all var core_mask    every 1000
+group surface dynamic all var surface_mask every 1000
 
 # ============================================
 # 3. PHASE DIAGNOSTICS (THE FIX)
@@ -93,7 +101,9 @@ variable is_austenite atom "c_csym < v_CSP_CUTOFF"
 
 # Sum up Austenite atoms only within the CORE group
 compute n_aus core reduce sum v_is_austenite
-variable n_core equal count(core)
+
+# Count core atoms dynamically (must use equal-style for runtime evaluation)
+variable n_core equal "count(core)"
 
 # Calculate Fraction (0.0 to 1.0)
 variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-6)"
@@ -158,5 +168,6 @@ fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${run_hold}
 
 # --- FINAL OUTPUT ---
-write_data ${output_dir}/final_structure.data
+# Match what the shell script expects (final.data)
+write_data ${output_dir}/final.data
 print "SIMULATION COMPLETE."
