@@ -36,12 +36,12 @@ variable     delta_T     equal (v_T_high-v_T_low)
 variable     run_ramp    equal round(v_delta_T/v_T_rate/dt)
 variable     run_hold    equal 50000
 
-# Stages for Restarts
-variable     end_stage0  equal ${run_hold}
-variable     end_stage1  equal ${end_stage0}+${run_ramp}
-variable     end_stage2  equal ${end_stage1}+${run_hold}
-variable     end_stage3  equal ${end_stage2}+${run_ramp}
-variable     end_stage4  equal ${end_stage3}+${run_hold}
+# Stages for Restarts (use v_ references to avoid early evaluation)
+variable     end_stage0  equal v_run_hold
+variable     end_stage1  equal v_end_stage0+v_run_ramp
+variable     end_stage2  equal v_end_stage1+v_run_hold
+variable     end_stage3  equal v_end_stage2+v_run_ramp
+variable     end_stage4  equal v_end_stage3+v_run_hold
 
 # ==========================================================================
 # 2. SETUP & POTENTIAL
@@ -158,54 +158,58 @@ restart 10000 ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 # ==========================================================================
 # 5. EXECUTION LOOP
 # ==========================================================================
+
+# Initialize velocities only on fresh start
+if "$(step) == 0" then "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
+
 fix mom all momentum 100 linear 1 1 1 angular
 variable stage_id equal -1
 
 print ">>> STARTING THERMAL CYCLE"
 
 # --- STAGE 0: EQUILIBRATE (500K) ---
-if "$(step) < ${end_stage0}" then &
+if "$(step) < $(v_end_stage0)" then &
    "variable stage_id equal 0" &
    "print '>>> STAGE 0: Equilibrate Austenite'" &
    "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
-   "run ${end_stage0} upto" &
+   "run $(v_end_stage0) upto" &
    "unfix 1" &
    "write_restart ${restart_dir}/restart.stage0_end"
 
 # --- STAGE 1: COOLING (500K -> 200K) ---
-if "$(step) < ${end_stage1}" then &
+if "$(step) < $(v_end_stage1)" then &
    "variable stage_id equal 1" &
    "print '>>> STAGE 1: Cooling (A->M)'" &
    "fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}" &
-   "run ${end_stage1} upto" &
+   "run $(v_end_stage1) upto" &
    "unfix 1" &
    "write_restart ${restart_dir}/restart.stage1_end"
 
 # --- STAGE 2: HOLD LOW (200K) ---
-if "$(step) < ${end_stage2}" then &
+if "$(step) < $(v_end_stage2)" then &
    "variable stage_id equal 2" &
    "print '>>> STAGE 2: Relax Martensite'" &
    "fix 1 all nvt temp ${T_low} ${T_low} ${tdamp}" &
-   "run ${end_stage2} upto" &
+   "run $(v_end_stage2) upto" &
    "unfix 1" &
    "write_restart ${restart_dir}/restart.stage2_end"
 
 # --- STAGE 3: HEATING (200K -> 500K) ---
-if "$(step) < ${end_stage3}" then &
+if "$(step) < $(v_end_stage3)" then &
    "variable stage_id equal 3" &
    "print '>>> STAGE 3: Heating (M->A)'" &
    "fix 1 all nvt temp ${T_low} ${T_high} ${tdamp}" &
-   "run ${end_stage3} upto" &
+   "run $(v_end_stage3) upto" &
    "unfix 1" &
    "write_restart ${restart_dir}/restart.stage3_end"
 
 # --- STAGE 4: FINAL RECOVERY (500K) ---
-if "$(step) < ${end_stage4}" then &
+if "$(step) < $(v_end_stage4)" then &
    "variable stage_id equal 4" &
    "print '>>> STAGE 4: Final Recovery'" &
    "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
-   "run ${end_stage4} upto" &
+   "run $(v_end_stage4) upto" &
    "unfix 1" &
    "write_restart ${restart_dir}/restart.stage4_end"
 
-print ">>> SIMULATION COMPLETE. CPU HOURS: ${cpu_hours}"
+print ">>> SIMULATION COMPLETE. CPU HOURS: $(v_cpu_hours)"

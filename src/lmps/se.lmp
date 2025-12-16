@@ -60,10 +60,10 @@ variable eq_steps   equal 30000
 variable hold_steps equal 20000
 
 # --- Stage End Steps (Absolute) ---
-variable end0 equal ${eq_steps}
-variable end1 equal ${end0}+${load_steps}
-variable end2 equal ${end1}+${unload_steps}
-variable end3 equal ${end2}+${hold_steps}
+variable end0 equal v_eq_steps
+variable end1 equal v_end0+v_load_steps
+variable end2 equal v_end1+v_unload_steps
+variable end3 equal v_end2+v_hold_steps
 
 # --- RESTART-PROOF REFERENCE LOGIC ---
 variable param_file string "${output_dir}/se_ref.lmp"
@@ -80,7 +80,7 @@ include ${param_file}
 # ==========================================================================
 
 # --- A. Time & Cost ---
-variable t_elapsed internal elapsed
+variable t_elapsed equal elapsed
 variable cpu_hours equal v_t_elapsed/3600.0
 
 # --- B. Core/Surface & Geometry ---
@@ -182,16 +182,16 @@ fix mom all momentum 100 linear 1 1 1 angular
 print ">>> STARTING SUPERELASTICITY PROTOCOL..."
 
 # --- STAGE 0: EQUILIBRATION ---
-if "$(step) < ${end0}" then &
+if "$(step) < $(v_end0)" then &
   "print '>>> STAGE 0: Equilibrating Austenite at ${T_se} K'" &
   "fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}" &
-  "run ${end0} upto" &
+  "run $(v_end0) upto" &
   "unfix nvt" &
   "write_restart ${restart_dir}/restart.se_stage0_end"
 
 # --- CAPTURE REFERENCE STATE ---
 # Only execute if we are at the transition point
-if "$(step) == ${end0}" then &
+if "$(step) == $(v_end0)" then &
   "run 0" &
   "variable current_Lz  equal v_Lz" &
   "variable current_zhi equal c_zmax" &
@@ -204,44 +204,44 @@ if "$(step) == ${end0}" then &
   "include ${param_file}"
 
 # --- STAGE 1: LOADING (COMPRESSION) ---
-if "$(step) < ${end1}" then &
+if "$(step) < $(v_end1)" then &
   "print '>>> STAGE 1: Loading (Compression)'" &
   "fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}" &
-  "variable start_step equal ${end0}" &
+  "variable start_step equal $(v_end0)" &
   "variable ramp equal (step - v_start_step)/${load_steps}" &
   "variable ramp_safe equal (step > (v_start_step + ${load_steps})) ? 1.0 : v_ramp" &
   "variable pos_hi equal v_z_hi0 - (v_Lz_ref*${strain_max}*0.5*v_ramp_safe)" &
   "variable pos_lo equal v_z_lo0 + (v_Lz_ref*${strain_max}*0.5*v_ramp_safe)" &
   "fix wall_hi all wall/harmonic zhi v_pos_hi 100.0 0.0 2.5 units box" &
   "fix wall_lo all wall/harmonic zlo v_pos_lo 100.0 0.0 2.5 units box" &
-  "run ${end1} upto" &
+  "run $(v_end1) upto" &
   "unfix wall_hi" &
   "unfix wall_lo" &
   "unfix nvt" &
   "write_restart ${restart_dir}/restart.se_stage1_end"
 
 # --- STAGE 2: UNLOADING (RELAXATION) ---
-if "$(step) < ${end2}" then &
+if "$(step) < $(v_end2)" then &
   "print '>>> STAGE 2: Unloading'" &
   "fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}" &
-  "variable start_step equal ${end1}" &
+  "variable start_step equal $(v_end1)" &
   "variable ramp equal (step - v_start_step)/${unload_steps}" &
   "variable ramp_safe equal (step > (v_start_step + ${unload_steps})) ? 1.0 : v_ramp" &
   "variable pos_hi equal v_z_hi0 - (v_Lz_ref*${strain_max}*0.5*(1.0-v_ramp_safe))" &
   "variable pos_lo equal v_z_lo0 + (v_Lz_ref*${strain_max}*0.5*(1.0-v_ramp_safe))" &
   "fix wall_hi all wall/harmonic zhi v_pos_hi 100.0 0.0 2.5 units box" &
   "fix wall_lo all wall/harmonic zlo v_pos_lo 100.0 0.0 2.5 units box" &
-  "run ${end2} upto" &
+  "run $(v_end2) upto" &
   "unfix wall_hi" &
   "unfix wall_lo" &
   "unfix nvt" &
   "write_restart ${restart_dir}/restart.se_stage2_end"
 
 # --- STAGE 3: FINAL HOLD (RESIDUAL STRAIN CHECK) ---
-if "$(step) < ${end3}" then &
+if "$(step) < $(v_end3)" then &
   "print '>>> STAGE 3: Final Hold (Checking Recovery)'" &
   "fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}" &
-  "run ${end3} upto" &
+  "run $(v_end3) upto" &
   "unfix nvt" &
   "write_restart ${restart_dir}/restart.se_stage3_end" &
   "write_data ${output_dir}/final.data"
