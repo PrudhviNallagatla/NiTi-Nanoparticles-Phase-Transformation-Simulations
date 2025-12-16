@@ -14,32 +14,32 @@ atom_style  atomic
 # Prefer environment variables (uppercase), fall back to lowercase, then hard defaults.
 
 variable input_data getenv INPUT_DATA
-if "${input_data} == 'NULL' || ${input_data} == ''" then "variable input_data getenv input_data"
-if "${input_data} == 'NULL' || ${input_data} == ''" then "variable input_data string 'minimized.data'"
+if "${input_data} == NULL" then "variable input_data getenv input_data"
+if "${input_data} == NULL" then "variable input_data string 'minimized.data'"
 
 variable restart_file getenv RESTART_FILE
-if "${restart_file} == 'NULL' || ${restart_file} == ''" then "variable restart_file getenv restart_file"
-if "${restart_file} == 'NULL' || ${restart_file} == ''" then "variable restart_file string 'none'"
+if "${restart_file} == NULL" then "variable restart_file getenv restart_file"
+if "${restart_file} == NULL" then "variable restart_file string 'none'"
 
 variable output_dir getenv OUTPUT_DIR
-if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir getenv output_dir"
-if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir string 'se_output'"
+if "${output_dir} == NULL" then "variable output_dir getenv output_dir"
+if "${output_dir} == NULL" then "variable output_dir string 'se_output'"
 
 variable restart_dir getenv RESTART_DIR
-if "${restart_dir} == 'NULL' || ${restart_dir} == ''" then "variable restart_dir getenv restart_dir"
-if "${restart_dir} == 'NULL' || ${restart_dir} == ''" then "variable restart_dir string 'restarts'"
+if "${restart_dir} == NULL" then "variable restart_dir getenv restart_dir"
+if "${restart_dir} == NULL" then "variable restart_dir string 'restarts'"
 
 variable pot_lib getenv POT_LIB
-if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib getenv pot_lib"
-if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+if "${pot_lib} == NULL" then "variable pot_lib getenv pot_lib"
+if "${pot_lib} == NULL" then "variable pot_lib string 'library.meam'"
 
 variable pot_file getenv POT_FILE
-if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file getenv pot_file"
-if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
+if "${pot_file} == NULL" then "variable pot_file getenv pot_file"
+if "${pot_file} == NULL" then "variable pot_file string 'NiTi.meam'"
 
 variable seed getenv SEED
-if "${seed} == 'NULL' || ${seed} == ''" then "variable seed getenv seed"
-if "${seed} == 'NULL' || ${seed} == ''" then "variable seed string '12345'"
+if "${seed} == NULL" then "variable seed getenv seed"
+if "${seed} == NULL" then "variable seed string '12345'"
 
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
