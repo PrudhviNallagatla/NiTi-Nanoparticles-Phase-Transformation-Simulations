@@ -9,7 +9,7 @@ set -euo pipefail
 # CONFIGURATION
 # ============================================
 DATA_FILES=(
-    "/home/rimuru/workspace/data/structures/niti_2nm_Ni50_amorphous.data"
+    "/home/rimuru/workspace/data/structures/niti_10nm_Ni50_single_crystal.data"
 )
 
 PROJECT_ROOT="/home/rimuru/workspace"

@@ -48,13 +48,19 @@ variable    delta_T     equal (v_T_high-v_T_low)
 variable    run_ramp    equal round(v_delta_T/v_T_rate/dt)
 variable    run_hold    equal 50000
 
-# ============================================
-# 2. GROUPS & REGIONS (STATIC CORE)
-# ============================================
+# ----------------------------
+# OUTPUT CADENCE (ΔT-based)
+# ----------------------------
+# ΔT per step = T_rate*dt  (K/step)
+# steps_per_dT = dT/(T_rate*dt)
+# Use ceil() so we do not output *less frequently* than requested.
+variable    dT_text    equal 0.1     # K per hysteresis point
+variable    dT_dump    equal 0.5     # K per snapshot
+variable    dT_summary equal 1.0     # K per summary line
 
-# Zero momentum initially to stop drift
-velocity all create ${T_high} 492845 dist gaussian
-fix freeze_mom all momentum 1000 linear 1 1 1 angular
+variable    text_every    equal if(ceil(v_dT_text/(v_T_rate*dt))<1,1,ceil(v_dT_text/(v_T_rate*dt)))
+variable    dump_every    equal if(ceil(v_dT_dump/(v_T_rate*dt))<1,1,ceil(v_dT_dump/(v_T_rate*dt)))
+variable    summary_every equal if(ceil(v_dT_summary/(v_T_rate*dt))<1,1,ceil(v_dT_summary/(v_T_rate*dt)))
 
 # --- DEFINE CORE (Exclude Surface) ---
 # Use true mass-weighted COM (important for Ni/Ti)
@@ -83,8 +89,8 @@ fix __int all nve
 run 0
 unfix __int
 
-group core    dynamic all var core_mask    every 1000
-group surface dynamic all var surface_mask every 1000
+group core    dynamic all var core_mask    every ${text_every}
+group surface dynamic all var surface_mask every ${text_every}
 
 # ============================================
 # 3. PHASE DIAGNOSTICS (THE FIX)
@@ -121,50 +127,55 @@ compute pe_core_sum core reduce sum c_pe_all
 # 4. OUTPUT STREAMS  (Temperature-synchronized)
 # ============================================
 
-variable    dT_text equal 0.1     # K per hysteresis point
-variable    dT_dump equal 0.5     # K per snapshot
+print "OUTPUT CADENCE:"
+print "  text_every    = ${text_every} steps (~${dT_text} K)"
+print "  dump_every    = ${dump_every} steps (~${dT_dump} K)"
+print "  summary_every = ${summary_every} steps (~${dT_summary} K)"
 
-variable    text_every equal max(1,round(v_dT_text/(v_T_rate*dt)))
-variable    dump_every equal max(1,round(v_dT_dump/(v_T_rate*dt)))
-
-# --- (NEW) ELAPSED WALLTIME IN D/H/M/S (from thermo keyword 'cpu' in seconds) ---
+# --- ELAPSED WALLTIME IN D/H/M/S (cpu is seconds) ---
 variable cpu_s    equal cpu
 variable cpu_dayT equal v_cpu_s/86400.0
 variable cpu_hrT  equal v_cpu_s/3600.0
-
 variable cpu_days equal floor(v_cpu_s/86400.0)
 variable cpu_hrs  equal floor((v_cpu_s-86400.0*v_cpu_days)/3600.0)
 variable cpu_min  equal floor((v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs)/60.0)
 variable cpu_sec  equal (v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs-60.0*v_cpu_min)
 
-# Optional: simulation time too (metal units => ps)
+# simulation time (metal units => ps)
 variable sim_ps equal time
 variable sim_ns equal v_sim_ps/1000.0
 
 # Stage label (string)
 variable STAGE string "init"
 
-print "OUTPUT CADENCE:"
-print "  text_every = ${text_every} steps (~${dT_text} K)"
-print "  dump_every = ${dump_every} steps (~${dT_dump} K)"
+# IMPORTANT: thermo prints to terminal + log
+# Make the log readable: print progress every 1.0 K (summary cadence), not every 0.1 K
+thermo      ${summary_every}
 
-# Make thermo match the high-res cadence (same as 0.1 K points during ramps)
-thermo      ${text_every}
-thermo_style custom step v_sim_ps v_sim_ns temp c_T_core pe ke etotal \
-                    v_frac_aus c_ave_csp c_pe_core_avg c_rg_all c_rg_core \
-                    c_msd_all[4] vol cpu v_cpu_dayT v_cpu_hrT v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
+# Compact thermo line (still includes elapsed walltime as D/H/M/S fields)
+# (LAMMPS can't print a single "D:H:M:S" string in thermo; this is the cleanest minimal set.)
+thermo_style custom step v_sim_ns temp c_T_core v_frac_aus pe vol cpu v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
 thermo_modify flush yes
 
-# Hysteresis / metrics file: every 0.1 K
-# (Removed: unfix data_out) because it errors if fix doesn't exist yet
+# Keep your high-res file outputs unchanged:
+#  - fix data_out every ${text_every} (0.1 K)
+#  - fix summary_out every ${summary_every} (1.0 K)
+#  - dump every ${dump_every} (0.5 K)
+
+# High-res hysteresis/metrics file (0.1 K)
 fix data_out all print ${text_every} &
     "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(pe) $(ke) $(etotal) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(cpu) $(v_cpu_days) $(v_cpu_hrs) $(v_cpu_min) $(v_cpu_sec)" &
     file ${output_dir}/hysteresis.txt screen no &
     title "# STAGE step sim_ps T_global T_core PE KE Etot Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_s cpu_days cpu_hrs cpu_min cpu_sec"
 
-# Visualization dump: every 0.5 K
-# (Removed: undump 1) because it errors if dump ID doesn't exist yet
-dump 1 all custom ${dump_every} ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
+# NEW: lower-frequency summary file (1.0 K)
+fix summary_out all print ${summary_every} &
+    "${STAGE} $(step) $(v_sim_ns) $(temp) $(c_T_core) $(pe) $(etotal) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hrT)" &
+    file ${output_dir}/stage_summary.txt screen no &
+    title "# STAGE step sim_ns T_global T_core PE Etot Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
+
+# Dump every 0.5 K
+dump 1 all custom ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
 dump_modify 1 sort id element Ni Ti
 
 # ============================================
