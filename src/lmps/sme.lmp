@@ -13,33 +13,33 @@ atom_style  atomic
 # --- VARIABLES & DEFAULTS (LAMMPS 2Aug2023-compatible; no is_defined()) ---
 # Prefer environment variables (uppercase), fall back to lowercase, then hard defaults.
 
-variable input_data string "$(getenv INPUT_DATA)"
-if "${input_data} == ''" then "variable input_data string '$(getenv input_data)'"
-if "${input_data} == ''" then "variable input_data string 'minimized.data'"
+variable input_data getenv INPUT_DATA
+if "${input_data} == 'NULL' || ${input_data} == ''" then "variable input_data getenv input_data"
+if "${input_data} == 'NULL' || ${input_data} == ''" then "variable input_data string 'minimized.data'"
 
-variable restart_file string "$(getenv RESTART_FILE)"
-if "${restart_file} == ''" then "variable restart_file string '$(getenv restart_file)'"
-if "${restart_file} == ''" then "variable restart_file string 'none'"
+variable restart_file getenv RESTART_FILE
+if "${restart_file} == 'NULL' || ${restart_file} == ''" then "variable restart_file getenv restart_file"
+if "${restart_file} == 'NULL' || ${restart_file} == ''" then "variable restart_file string 'none'"
 
-variable output_dir string "$(getenv OUTPUT_DIR)"
-if "${output_dir} == ''" then "variable output_dir string '$(getenv output_dir)'"
-if "${output_dir} == ''" then "variable output_dir string 'sme_output'"
+variable output_dir getenv OUTPUT_DIR
+if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir getenv output_dir"
+if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir string 'sme_output'"
 
-variable restart_dir string "$(getenv RESTART_DIR)"
-if "${restart_dir} == ''" then "variable restart_dir string '$(getenv restart_dir)'"
-if "${restart_dir} == ''" then "variable restart_dir string 'restarts'"
+variable restart_dir getenv RESTART_DIR
+if "${restart_dir} == 'NULL' || ${restart_dir} == ''" then "variable restart_dir getenv restart_dir"
+if "${restart_dir} == 'NULL' || ${restart_dir} == ''" then "variable restart_dir string 'restarts'"
 
-variable pot_lib string "$(getenv POT_LIB)"
-if "${pot_lib} == ''" then "variable pot_lib string '$(getenv pot_lib)'"
-if "${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+variable pot_lib getenv POT_LIB
+if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib getenv pot_lib"
+if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
 
-variable pot_file string "$(getenv POT_FILE)"
-if "${pot_file} == ''" then "variable pot_file string '$(getenv pot_file)'"
-if "${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
+variable pot_file getenv POT_FILE
+if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file getenv pot_file"
+if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
 
-variable seed string "$(getenv SEED)"
-if "${seed} == ''" then "variable seed string '$(getenv seed)'"
-if "${seed} == ''" then "variable seed string '12345'"
+variable seed getenv SEED
+if "${seed} == 'NULL' || ${seed} == ''" then "variable seed getenv seed"
+if "${seed} == 'NULL' || ${seed} == ''" then "variable seed string '12345'"
 
 # restart cadence (was used but never defined)
 variable restart_every equal 10000

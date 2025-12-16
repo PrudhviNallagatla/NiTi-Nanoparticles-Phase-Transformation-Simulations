@@ -14,21 +14,21 @@ atom_style  atomic
 # Override via environment variables (preferred): STRUCTURE_FILE, OUTPUT_DIR, POT_LIB, POT_FILE
 # (lowercase variants also supported)
 
-variable structure_file string "$(getenv STRUCTURE_FILE)"
-if "${structure_file} == ''" then "variable structure_file string '$(getenv structure_file)'"
-if "${structure_file} == ''" then "variable structure_file string 'initial_structure.data'"
+variable structure_file getenv STRUCTURE_FILE
+if "${structure_file} == 'NULL' || ${structure_file} == ''" then "variable structure_file getenv structure_file"
+if "${structure_file} == 'NULL' || ${structure_file} == ''" then "variable structure_file string 'initial_structure.data'"
 
-variable output_dir string "$(getenv OUTPUT_DIR)"
-if "${output_dir} == ''" then "variable output_dir string '$(getenv output_dir)'"
-if "${output_dir} == ''" then "variable output_dir string 'minimization_output'"
+variable output_dir getenv OUTPUT_DIR
+if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir getenv output_dir"
+if "${output_dir} == 'NULL' || ${output_dir} == ''" then "variable output_dir string 'minimization_output'"
 
-variable pot_lib string "$(getenv POT_LIB)"
-if "${pot_lib} == ''" then "variable pot_lib string '$(getenv pot_lib)'"
-if "${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
+variable pot_lib getenv POT_LIB
+if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib getenv pot_lib"
+if "${pot_lib} == 'NULL' || ${pot_lib} == ''" then "variable pot_lib string 'library.meam'"
 
-variable pot_file string "$(getenv POT_FILE)"
-if "${pot_file} == ''" then "variable pot_file string '$(getenv pot_file)'"
-if "${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
+variable pot_file getenv POT_FILE
+if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file getenv pot_file"
+if "${pot_file} == 'NULL' || ${pot_file} == ''" then "variable pot_file string 'NiTi.meam'"
 
 # --- SETUP ---
 read_data   ${structure_file}
