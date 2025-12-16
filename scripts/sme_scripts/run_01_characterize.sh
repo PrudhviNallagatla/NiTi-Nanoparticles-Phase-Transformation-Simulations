@@ -37,9 +37,9 @@ if [[ ${TOTAL_CORES} -ge 16 ]]; then
     
 elif [[ ${TOTAL_CORES} -eq 8 ]]; then
     # 8-core VM: Use 4x2 hybrid
-    export OMP_NUM_THREADS=2
-    MPI_RANKS=4
-    echo "INFO: Using 8-core profile (MPI_RANKS=4, OMP_NUM_THREADS=2)"
+    export OMP_NUM_THREADS=1
+    MPI_RANKS=8
+    echo "INFO: Using 8-core profile (MPI_RANKS=8, OMP_NUM_THREADS=1)"
     
 elif [[ ${TOTAL_CORES} -eq 4 ]]; then
     # 4-core VM: Use 2x2 hybrid

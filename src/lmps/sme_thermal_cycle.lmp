@@ -38,9 +38,9 @@ fix bal all balance 5000 1.05 rcb
 timestep    0.002
 
 # Cycle Parameters (Adjusted for Phase Transformation)
-variable    T_low   equal 200.0   # Well below Mf
-variable    T_high  equal 500.0   # Slightly higher to ensure full Austenite recovery
-variable    T_rate  equal 0.05    # K/ps (50 K/ns)
+variable    T_low   equal 200.0
+variable    T_high  equal 500.0
+variable    T_rate  equal 0.1      # K/ps
 variable    tdamp   equal 100.0*dt
 
 # Duration Calculations
@@ -96,41 +96,75 @@ compute T_core core temp
 # --- CENTROSYMMETRY PARAMETER (CSP) ---
 compute csym all centro/atom bcc
 
+# --- (NEW) SHAPE/SIZE + MOBILITY METRICS ---
+# Radius of gyration (tracks particle size/compactness)
+compute rg_all  all  gyration
+compute rg_core core gyration
+
+# Mean-squared displacement (mobility / transformation activity indicator)
+# Note: momentum removal helps keep MSD meaningful for a free nanoparticle
+compute msd_all all msd
+
 # --- STATIC PHASE DETECTION ---
 variable CSP_CUTOFF equal 1.5
-
-# Boolean check: 1 if Austenite, 0 if not
 variable is_austenite atom "c_csym < v_CSP_CUTOFF"
-
-# Sum up Austenite atoms only within the CORE group
 compute n_aus core reduce sum v_is_austenite
-
-# Count core atoms dynamically (must use equal-style for runtime evaluation)
 variable n_core equal "count(core)"
-
-# Calculate Fraction (0.0 to 1.0)
 variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-6)"
-
-# Diagnostic: Average CSP of Core
 compute ave_csp core reduce ave c_csym
 
+# --- (NEW) CORE ENERGY METRICS ---
+compute pe_core_avg core reduce ave c_pe_all
+compute pe_core_sum core reduce sum c_pe_all
+
 # ============================================
-# 4. OUTPUT STREAMS
+# 4. OUTPUT STREAMS  (Temperature-synchronized)
 # ============================================
 
-thermo      1000
-thermo_style custom step temp c_T_core pe v_frac_aus c_ave_csp vol cpu
+variable    dT_text equal 0.1     # K per hysteresis point
+variable    dT_dump equal 0.5     # K per snapshot
 
-# Hysteresis Data File (reduce I/O frequency; dynamics unchanged)
-# was: fix data_out all print 500 ...
-fix data_out all print 2000 &
-    "$(step) $(temp) $(c_T_core) $(pe) $(vol) $(v_frac_aus) $(c_ave_csp)" &
+variable    text_every equal max(1,round(v_dT_text/(v_T_rate*dt)))
+variable    dump_every equal max(1,round(v_dT_dump/(v_T_rate*dt)))
+
+# --- (NEW) ELAPSED WALLTIME IN D/H/M/S (from thermo keyword 'cpu' in seconds) ---
+variable cpu_s    equal cpu
+variable cpu_dayT equal v_cpu_s/86400.0
+variable cpu_hrT  equal v_cpu_s/3600.0
+
+variable cpu_days equal floor(v_cpu_s/86400.0)
+variable cpu_hrs  equal floor((v_cpu_s-86400.0*v_cpu_days)/3600.0)
+variable cpu_min  equal floor((v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs)/60.0)
+variable cpu_sec  equal (v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs-60.0*v_cpu_min)
+
+# Optional: simulation time too (metal units => ps)
+variable sim_ps equal time
+variable sim_ns equal v_sim_ps/1000.0
+
+# Stage label (string)
+variable STAGE string "init"
+
+print "OUTPUT CADENCE:"
+print "  text_every = ${text_every} steps (~${dT_text} K)"
+print "  dump_every = ${dump_every} steps (~${dT_dump} K)"
+
+# Make thermo match the high-res cadence (same as 0.1 K points during ramps)
+thermo      ${text_every}
+thermo_style custom step v_sim_ps v_sim_ns temp c_T_core pe ke etotal \
+                    v_frac_aus c_ave_csp c_pe_core_avg c_rg_all c_rg_core \
+                    c_msd_all[4] vol cpu v_cpu_dayT v_cpu_hrT v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
+thermo_modify flush yes
+
+# Hysteresis / metrics file: every 0.1 K
+# (Removed: unfix data_out) because it errors if fix doesn't exist yet
+fix data_out all print ${text_every} &
+    "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(pe) $(ke) $(etotal) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(cpu) $(v_cpu_days) $(v_cpu_hrs) $(v_cpu_min) $(v_cpu_sec)" &
     file ${output_dir}/hysteresis.txt screen no &
-    title "# step T_global T_core PE Vol Austenite_Frac Avg_CSP"
+    title "# STAGE step sim_ps T_global T_core PE KE Etot Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_s cpu_days cpu_hrs cpu_min cpu_sec"
 
-# Visualization (OVITO) (reduce dump frequency)
-# was: dump 1 all custom 5000 ...
-dump 1 all custom 20000 ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
+# Visualization dump: every 0.5 K
+# (Removed: undump 1) because it errors if dump ID doesn't exist yet
+dump 1 all custom ${dump_every} ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
 dump_modify 1 sort id element Ni Ti
 
 # ============================================
@@ -144,29 +178,34 @@ print " Cutoff Radius: ${rcut}"
 print "=========================================="
 
 # --- EQUILIBRATION (High T - Austenite) ---
+variable STAGE string "stage0_hold_high"
 print ">>> STAGE 0: Equilibrating Austenite (${T_high} K)..."
 fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${run_hold}
 
 # --- COOLING (A -> M) ---
+variable STAGE string "stage1_cool"
 print ">>> STAGE 1: Cooling (${T_high} -> ${T_low} K)..."
 unfix 1
 fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}
 run ${run_ramp}
 
 # --- HOLDING (Martensite?) ---
+variable STAGE string "stage2_hold_low"
 print ">>> STAGE 2: Holding Low Temp (${T_low} K)..."
 unfix 1
 fix 1 all nvt temp ${T_low} ${T_low} ${tdamp}
 run ${run_hold}
 
 # --- HEATING (M -> A) ---
+variable STAGE string "stage3_heat"
 print ">>> STAGE 3: Heating (${T_low} -> ${T_high} K)..."
 unfix 1
 fix 1 all nvt temp ${T_low} ${T_high} ${tdamp}
 run ${run_ramp}
 
 # --- HOLDING (Austenite Recovery) ---
+variable STAGE string "stage4_hold_high"
 print ">>> STAGE 4: Holding High Temp (${T_high} K)..."
 unfix 1
 fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
