@@ -23,11 +23,14 @@ pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
 # --- OPTIMIZATION ---
 neighbor    1.0 bin
-neigh_modify delay 0 every 1 check yes
+# was: neigh_modify delay 0 every 1 check yes
+# allow up to 10 steps between rebuilds; 'check yes' still rebuilds earlier if needed
+neigh_modify delay 0 every 10 check yes
 
-# LOAD BALANCING FOR VACUUM NANOPARTICLES (3-5x speedup)
+# LOAD BALANCING FOR VACUUM NANOPARTICLES
 comm_style tiled
-fix bal all balance 1000 1.05 rcb
+# was: fix bal all balance 1000 1.05 rcb
+fix bal all balance 5000 1.05 rcb
 
 # ============================================
 # 1. SETUP & VARIABLES
@@ -116,16 +119,18 @@ compute ave_csp core reduce ave c_csym
 # ============================================
 
 thermo      1000
-thermo_style custom step temp c_T_core pe v_frac_aus c_ave_csp vol
+thermo_style custom step temp c_T_core pe v_frac_aus c_ave_csp vol cpu
 
-# Hysteresis Data File
-fix data_out all print 500 &
+# Hysteresis Data File (reduce I/O frequency; dynamics unchanged)
+# was: fix data_out all print 500 ...
+fix data_out all print 2000 &
     "$(step) $(temp) $(c_T_core) $(pe) $(vol) $(v_frac_aus) $(c_ave_csp)" &
     file ${output_dir}/hysteresis.txt screen no &
     title "# step T_global T_core PE Vol Austenite_Frac Avg_CSP"
 
-# Visualization (OVITO)
-dump 1 all custom 5000 ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
+# Visualization (OVITO) (reduce dump frequency)
+# was: dump 1 all custom 5000 ...
+dump 1 all custom 20000 ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
 dump_modify 1 sort id element Ni Ti
 
 # ============================================
