@@ -89,7 +89,7 @@ minimize 1.0e-6 1.0e-8 10000 20000
 print ">>> STAGE 3: Final Polish (FIRE)..."
 min_style fire 
 # [OPTIMIZATION] Tolerance set to 1.0e-8. 1.0e-10 is often below MEAM noise floor.
-minimize 1.0e-8 1.0e-8 20000 50000
+minimize 0.0 1.0e-8 20000 50000
 
 # ============================================
 # FINAL VALIDATION & CORE ANALYSIS

@@ -1,22 +1,18 @@
-# filepath: /home/rimuru/workspace/src/lmps/sme.lmp
-# GOAL: NiTi Nanoparticle SME (Cool -> Load -> Unload -> Heat)
-# REVISION: v1 (Restart-Proof Reference States)
+# filepath: /home/rimuru/workspace/src/lmps/sme_journal_v2.lmp
+# GOAL: Journal-Grade NiTi Nanoparticle SME (Cool -> Load -> Unload -> Heat)
+# REVISION: v2 (Integrated Physics + CPU Tracking + Enthalpy + Crash-Proofing)
 
 clear
 units       metal
 dimension   3
-# [PHYSICS] 's' is safer for drift, but we need room for walls.
+# [SAFETY] 's' is safer for drift, but we need room for walls.
 # We will center the particle initially to ensure 's' works well.
 boundary    s s s
 atom_style  atomic
 
-# --- VARIABLES & DEFAULTS (LAMMPS 2Aug2023-compatible; no is_defined()) ---
-# Prefer environment variables (uppercase), fall back to lowercase, then hard defaults.
-
-# --- VARIABLES ---
-# Must be set via environment variables:
-# INPUT_DATA, RESTART_FILE, OUTPUT_DIR, RESTART_DIR, POT_LIB, POT_FILE, SEED
-# NOTE: set RESTART_FILE=none for fresh runs.
+# ==========================================================================
+# 1. ENVIRONMENT & VARIABLES
+# ==========================================================================
 variable input_data    getenv INPUT_DATA
 variable restart_file  getenv RESTART_FILE
 variable output_dir    getenv OUTPUT_DIR
@@ -25,7 +21,7 @@ variable pot_lib       getenv POT_LIB
 variable pot_file      getenv POT_FILE
 variable seed          getenv SEED
 
-# restart cadence
+# Restart cadence
 variable restart_every equal 10000
 
 shell mkdir -p "${output_dir}"
@@ -46,24 +42,26 @@ fix bal all balance 5000 1.05 rcb
 
 timestep    0.002
 
-# --- PROTOCOL PARAMETERS ---
+# ==========================================================================
+# 2. PROTOCOL & PHYSICS
+# ==========================================================================
 variable T_low      equal 200.0
 variable T_high     equal 500.0
 variable tdamp      equal 100.0*dt
 
-# Mechanical Loading (Compression)
+# --- Mechanical Loading (Compression) ---
 variable strain_max equal 0.10      # 10% Strain
 variable load_time  equal 2000.0    # ps
 variable load_steps equal round(v_load_time/dt)
 
-# Stage Durations (Steps)
+# --- Stage Durations (Steps) ---
 variable cool_steps   equal 50000
 variable hold_low     equal 30000
 variable unload_steps equal 20000
 variable heat_steps   equal 50000
 variable hold_high    equal 20000
 
-# Absolute End Steps
+# --- Absolute End Steps ---
 variable end0 equal ${cool_steps}
 variable end1 equal ${end0}+${hold_low}
 variable end2 equal ${end1}+${load_steps}
@@ -71,19 +69,25 @@ variable end3 equal ${end2}+${unload_steps}
 variable end4 equal ${end3}+${heat_steps}
 variable end5 equal ${end4}+${hold_high}
 
-# --- PERSISTENCE LOGIC (Restart-proof reference state) ---
+# --- RESTART-PROOF REFERENCE LOGIC ---
 variable param_file string "${output_dir}/ref_params.lmp"
-
 # Default values (overwritten if ref_params.lmp contains saved values)
 variable Lz_ref equal 0.0
 variable z_hi0  equal 0.0
 variable z_lo0  equal 0.0
-
-# Make sure the file exists; empty include is OK and avoids is_file()
+# Ensure file exists to avoid errors on fresh run
 shell touch "${param_file}"
 include ${param_file}
 
-# --- COMPUTES ---
+# ==========================================================================
+# 3. ADVANCED COMPUTATIONS (Journal-Grade)
+# ==========================================================================
+
+# --- A. Time & Cost ---
+variable t_elapsed internal elapsed
+variable cpu_hours equal v_t_elapsed/3600.0
+
+# --- B. Core/Surface & Geometry ---
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
@@ -91,64 +95,99 @@ variable zcm equal c_com[3]
 
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
-variable R_eff equal sqrt(c_r2max)
-variable V_eff equal (4.0/3.0)*PI*(v_R_eff^3)
+# Global Effective Volume (Safe approximation for Stress Calculation)
+variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
 
-# Core Identification
+# Core Group Definition
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 group core dynamic all var core_mask every 1000
 
+# --- C. Thermodynamics (Enthalpy & Entropy) ---
 compute T_core core temp
-
-# Stress & Phase
 compute pe_atom all pe/atom
+compute ke_atom all ke/atom
+
+# Enthalpy (H = PE + KE + PV). PV ~ 0 for vacuum.
+compute H_all all reduce sum c_pe_atom c_ke_atom
+variable H_total_eV equal c_H_all[1]+c_H_all[2]
+
+# Entropy (Requires PKG_EXTRA-COMPUTE) - Optional but powerful
+# compute s_atom all entropy/atom sigma 0.2 cutoff 6.0 avg yes
+
+# --- D. Crystallography & Phase ---
 compute csym all centro/atom bcc
 compute ack  all ackland/atom
-compute st   all stress/atom NULL
+compute cna  all cna/atom 3.0
 
-compute Szz all reduce sum c_st[3]
-# Stress in GPa
-variable sigma_zz_GPa equal -(c_Szz/(v_V_eff+1.0e-12))*1.0e-4
-
-# Shape Metrics
-compute gyr all gyration
-variable Rg    equal c_gyr
-variable Rg_zz equal c_gyr[3] # Elongation along loading axis
-
-# Phase Fraction (Austenite Proxy)
+# Phase Fraction (Austenite Proxy: Ackland == 3)
 variable is_austenite atom "c_ack == 3"
 compute n_aus core reduce sum v_is_austenite
 variable n_core   equal "count(core)"
 variable frac_aus equal "c_n_aus/(v_n_core+1.0e-6)"
 
-# Geometry & Strain
+# --- E. Mechanical Stress (Tensor) ---
+compute st all stress/atom NULL
+
+# Global Stress (Virial / Effective Volume) - GPa
+compute Szz all reduce sum c_st[3]
+variable sigma_zz_GPa equal -(c_Szz/(v_Vol_total+1.0e-12))*1.0e-4
+
+# Local Stress Metrics (for Dump)
+# Von Mises & Pressure (Qualitative per atom without Voronoi volume)
+variable vm_atom atom sqrt(0.5*((c_st[1]-c_st[2])^2+(c_st[2]-c_st[3])^2+(c_st[3]-c_st[1])^2+6*(c_st[4]^2+c_st[5]^2+c_st[6]^2)))
+variable p_atom  atom -(c_st[1]+c_st[2]+c_st[3])/3.0
+
+# --- F. Strain & Shape ---
+compute gyr all gyration
+variable Rg    equal c_gyr
+variable Rg_zz equal c_gyr[3]
+
 compute zmin all reduce min z
 compute zmax all reduce max z
 variable Lz equal (c_zmax - c_zmin)
 
-# Strain Calculation (Safe: Uses Lz_ref which is either 0.0 or loaded from file)
-# If Lz_ref is 0 (fresh run before Stage 2), strain is 0.
+# Strain Calculation (Restart-Safe)
 variable strain equal "(v_Lz_ref > 0) * (v_Lz - v_Lz_ref)/(v_Lz_ref+1.0e-12)"
 
-# --- EXECUTION ---
+# Displacement (Recovery Vector)
+compute disp all displace/atom
+variable disp_mag atom sqrt(c_disp[1]^2+c_disp[2]^2+c_disp[3]^2)
+compute disp_rms all reduce ave v_disp_mag
 
-# Init Velocities (Only if fresh start)
-if "$(step) == 0" then "velocity all create ${T_high} 48274 mom yes rot yes dist gaussian"
-fix mom all momentum 100 linear 1 1 1 angular
+# ==========================================================================
+# 4. OUTPUTS (Clean Terminal / Rich Files)
+# ==========================================================================
 
-# Outputs
+# 4.1. Terminal (6 Vital Signs)
+thermo 1000
+thermo_style custom step v_cpu_hours temp c_T_core v_strain v_sigma_zz_GPa
+
+# 4.2. Detailed Log (The Vault)
+fix out all print 500 &
+"$(step) $(v_cpu_hours) $(temp) $(c_T_core) $(v_strain) $(v_sigma_zz_GPa) $(v_frac_aus) $(v_H_total_eV) $(v_Rg) $(c_disp_rms)" &
+file ${output_dir}/sme_data.txt append yes screen no &
+title "# Step CPU_Hrs T_Global T_Core Strain SigmaZZ(GPa) Frac_Aus H_Total(eV) Rg(A) Disp_RMS(A)"
+
+# 4.3. Rich Dump (Visualization)
+# Includes: Phase(ack), Stress(vm/tensor), Displacement(vec)
+dump 1 all custom 5000 ${output_dir}/dump.sme.*.gz &
+    id type x y z &
+    c_pe_atom c_csym c_ack c_cna &
+    c_st[1] c_st[2] c_st[3] c_st[4] c_st[5] c_st[6] &
+    v_vm_atom v_p_atom &
+    c_disp[1] c_disp[2] c_disp[3]
+dump_modify 1 sort id element Ni Ti
+
 restart ${restart_every} ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
-thermo 1000
-thermo_style custom step temp c_T_core v_sigma_zz_GPa v_frac_aus v_Rg v_strain
+# ==========================================================================
+# 5. EXECUTION
+# ==========================================================================
 
-fix out all print 500 &
-"$(step) $(time) $(temp) $(c_T_core) $(v_Lz) $(v_strain) $(v_sigma_zz_GPa) $(v_frac_aus) $(v_Rg) $(v_Rg_zz)" &
-file ${output_dir}/sme_scalar.txt append yes screen no
-
-dump 1 all custom 5000 ${output_dir}/dump.sme.*.gz id type x y z c_csym c_ack c_st[3]
-dump_modify 1 sort id element Ni Ti
+# Init Velocities (Only if fresh start)
+if "$(step) == 0" then "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
+fix mom all momentum 100 linear 1 1 1 angular
 
 print ">>> STARTING SME PROTOCOL..."
 
@@ -169,8 +208,6 @@ if "$(step) < ${end1}" then &
   "write_restart ${restart_dir}/restart.stage1_end"
 
 # --- CAPTURE REFERENCE STATE (CRITICAL) ---
-# We calculate and SAVE the reference state so restarts know where 'zero' strain is.
-# We only do this if we just finished Stage 1 (approximately).
 if "$(step) == ${end1}" then &
   "run 0" &
   "variable current_Lz equal v_Lz" &
@@ -224,4 +261,4 @@ if "$(step) < ${end5}" then &
   "unfix nvt" &
   "write_restart ${restart_dir}/restart.stage5_end"
 
-print "SME CYCLE COMPLETE."
+print "SME CYCLE COMPLETE. TOTAL CPU: ${cpu_hours} HRS"
