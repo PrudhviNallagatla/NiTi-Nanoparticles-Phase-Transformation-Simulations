@@ -241,7 +241,7 @@ for datafile in "${DATA_FILES[@]}"; do
         -var seed ${SEED} \
         -var pot_lib "${POT_LIB}" \
         -var pot_file "${POT_FILE}" \
-        -in src/lmps/se_mechanical_load.lmp \
+        -in src/lmps/se.lmp \
         2>&1 | tee "${logfile}"
         
     # Check if the job was successful

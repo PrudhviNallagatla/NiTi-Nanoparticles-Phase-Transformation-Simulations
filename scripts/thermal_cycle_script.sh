@@ -183,7 +183,7 @@ for datafile in "${DATA_FILES[@]}"; do
     restart_dir="${outdir}/restart_files"
 
     marker="${outdir}/.thermal_cycle_complete"
-    output_check="${outdir}/final.data"
+    output_check="${outdir}/restart.stage4_end"   # <-- replace final.data with this
     logfile="logs/thermal_${structure_name}.log"
 
     if [[ -f "${marker}" ]]; then
@@ -219,7 +219,7 @@ for datafile in "${DATA_FILES[@]}"; do
         -var pot_lib "${POT_LIB}" \
         -var pot_file "${POT_FILE}" \
         "${RESTART_ARGS[@]}" \
-        -in src/lmps/sme_thermal_cycle.lmp \
+        -in src/lmps/thermal_cycle.lmp \
         2>&1 | tee "${logfile}"
 
     if [[ -f "${output_check}" ]]; then

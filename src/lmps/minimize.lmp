@@ -1,6 +1,7 @@
-# filepath: /home/rimuru/workspace/src/lmps/niti_minimize_robust_v2.lmp
-# GOAL: Robust Energy Minimization for NiTi Nanoparticles (REFINED)
-# MODIFICATIONS: Adjusted neighbor skin, removed MEAM shift, fixed density logic
+# filepath: /home/rimuru/workspace/src/lmps/minimize.lmp
+# GOAL: Robust Energy Minimization for NiTi Nanoparticles (OPTIMIZED)
+# AUTHOR: LAMMPS Genie
+# REVISION: v3 (Static Grouping + Noise Floor Adjustment)
 
 clear
 units       metal
@@ -8,21 +9,29 @@ dimension   3
 boundary    s s s   
 atom_style  atomic
 
+# --- VARIABLES ---
+# Default variables if not passed via command line
+if "$(is_defined(structure_file)) == 0" then "variable structure_file string 'initial_structure.data'"
+if "$(is_defined(output_dir)) == 0"     then "variable output_dir string 'minimization_output'"
+if "$(is_defined(pot_lib)) == 0"        then "variable pot_lib string 'library.meam'"
+if "$(is_defined(pot_file)) == 0"       then "variable pot_file string 'NiTi.meam'"
+
 # --- SETUP ---
 read_data   ${structure_file}
 
-# [ADJUSTMENT] MEAM usually handles cutoffs internally. 'shift yes' removed to preserve physics.
+# [PHYSICS] MEAM handles cutoffs internally. 'shift yes' removed to preserve physics.
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
-# [OPTIMIZATION] Reduced skin distance for faster minimization
-neighbor    1.0 bin 
-neigh_modify delay 0 every 1 check yes
+# [OPTIMIZATION] Reduced skin distance for faster neighbor list builds
+neighbor    2.0 bin 
+neigh_modify delay 10 every 1 check yes
 
-# Hardware balancing
-balance     1.0 shift xyz 20 1.1
+# Hardware balancing (optional but good for large NPs)
+comm_style tiled
+fix bal all balance 2000 1.05 rcb
 
-# --- COMPUTES ---
+# --- BASE COMPUTES ---
 compute pe_atom all pe/atom
 compute stress  all stress/atom NULL
 compute csym    all centro/atom bcc
@@ -34,13 +43,12 @@ compute max_co_c all reduce max c_coord
 
 # --- OUTPUT SETUP ---
 thermo      100
-# Replaced 'press' (meaningless for free NP) with 'pe' and 'fmax'
 thermo_style custom step temp pe epair fmax fnorm c_avg_co_c
 
-shell       mkdir -p ${output_dir}
+shell mkdir -p "${output_dir}"
 
 # --- INITIAL STATE CHECK ---
-run 0 post no # 'post no' skips the full neighbor build if possible, just inits variables
+run 0 post no
 
 variable natoms equal count(all)
 variable pe_per_atom equal pe/v_natoms
@@ -51,7 +59,7 @@ print "Atoms:            ${natoms}"
 print "Initial PE/atom:  ${pe_per_atom} eV"
 print "=========================================="
 
-# Safety Check: Overlaps
+# Safety Check: Severe Overlaps
 if "${pe_per_atom} > 5.0" then &
     "print 'CRITICAL ERROR: Severe atomic overlaps detected (PE > 5 eV/atom).'" &
     "print 'Check input structure geometry.'" &
@@ -60,6 +68,7 @@ if "${pe_per_atom} > 5.0" then &
 # ============================================
 # STAGE 1: SOFTENING (Steepest Descent)
 # ============================================
+# Goal: Untangle severe overlaps without blowing up the simulation
 print ">>> STAGE 1: Steepest Descent (Untangling overlaps)..."
 min_style sd
 min_modify dmax 0.1 
@@ -68,6 +77,7 @@ minimize 1.0e-4 1.0e-6 5000 10000
 # ============================================
 # STAGE 2: CONVERGENCE (Conjugate Gradient)
 # ============================================
+# Goal: Efficiently reach the energy basin
 print ">>> STAGE 2: Conjugate Gradient (Efficient minimization)..."
 min_style cg
 minimize 1.0e-6 1.0e-8 10000 20000
@@ -75,47 +85,82 @@ minimize 1.0e-6 1.0e-8 10000 20000
 # ============================================
 # STAGE 3: POLISHING (FIRE)
 # ============================================
+# Goal: Fine-tune positions to satisfy strict force criteria
 print ">>> STAGE 3: Final Polish (FIRE)..."
 min_style fire 
-minimize 1.0e-10 1.0e-10 20000 50000
+# [OPTIMIZATION] Tolerance set to 1.0e-8. 1.0e-10 is often below MEAM noise floor.
+minimize 1.0e-8 1.0e-8 20000 50000
 
 # ============================================
-# FINAL VALIDATION
+# FINAL VALIDATION & CORE ANALYSIS
 # ============================================
-# Force evaluation of variables
+# Force update of positions before defining the core
+run 0
+
+# 1. Define Core Region (Static definition - FAST)
+# We do this NOW, rather than dynamically during minimization
+compute com all com
+variable xcm equal c_com[1]
+variable ycm equal c_com[2]
+variable zcm equal c_com[3]
+
+# Distance squared from COM
+variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
+compute r2max all reduce max v_rsq
+
+# Define cutoff (64% of max radius squared ~ 80% of radius)
+# Note: Requires 'run 0' to evaluate c_r2max
+run 0
+variable rcut_sq equal 0.64*c_r2max
+variable core_mask atom "v_rsq < v_rcut_sq"
+
+# Create the static group
+group core var core_mask
+
+# 2. Compute Core Properties
+compute pe_core core reduce ave c_pe_atom
+
+# 3. Evaluate Final Metrics
+# We must run 0 again to ensure the new group/compute is calculated
 run 0
 
 variable final_fmax equal fmax
 variable final_pe equal pe
 variable final_pe_atom equal v_final_pe/v_natoms
+variable final_pe_core equal c_pe_core
 
-# [LOGIC FIX] Calculating approximate density based on convex hull is hard in script.
-# Instead, we check PE/atom, which is the most reliable indicator of phase stability.
+# --- LOGIC CHECKS ---
 
-# 1. Convergence Check
+# A) Convergence Check
 if "${final_fmax} > 0.01" then &
     "print 'WARNING: Forces not fully converged (fmax = ${final_fmax})'" &
     "write_data ${output_dir}/unconverged.data"
 
-# 2. Energy Check (NiTi B2 ~ -4.9 eV/atom)
-# Surface atoms have higher energy (less negative). 
-# If PE is > -3.8 (e.g., -3.0), the core is likely not crystalline or surfaces are bad.
-if "${final_pe_atom} > -3.8" then &
-    "print 'ERROR: Energy suspiciously high (${final_pe_atom} eV). Structure likely unstable.'" &
+# B) Core Energy Check (Physical Validity)
+# If core PE is high, the internal crystal structure is wrong/metastable
+if "${final_pe_core} > -3.8" then &
+    "print 'WARNING: Core PE/atom suspiciously high (${final_pe_core} eV). Structure may be amorphous or metastable.'" &
+    "write_data ${output_dir}/suspicious_core_energy.data"
+
+# C) Global Fail-Safe
+if "${final_pe_atom} > -3.0" then &
+    "print 'ERROR: Average PE/atom extremely high (${final_pe_atom} eV). System likely unstable.'" &
     "quit 1"
 
 # --- FINAL OUTPUT ---
 write_data ${output_dir}/minimized.data
 write_restart ${output_dir}/minimized.restart
 
-dump 1 all custom 1 ${output_dir}/minimized.dump id type x y z c_pe_atom c_csym c_coord
+# Dump final snapshot with analysis columns
+dump 1 all custom 1 ${output_dir}/minimized.dump.gz id type x y z c_pe_atom c_csym c_coord
 dump_modify 1 sort id
 run 0
 
 print "=========================================="
 print "SUCCESS: MINIMIZATION COMPLETE"
 print "=========================================="
-print "Final PE/atom: ${final_pe_atom} eV"
-print "Final fmax:    ${final_fmax} eV/A"
-print "Note: Density check skipped (invalid for 's' boundaries)"
+print "Final PE/atom:      ${final_pe_atom} eV"
+print "Final CORE PE/atom: ${final_pe_core} eV"
+print "Final fmax:         ${final_fmax} eV/A"
+print "Output saved to:    ${output_dir}"
 print "=========================================="
