@@ -115,7 +115,7 @@ variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 
 # Create the static group
-group core var core_mask
+group core variable core_mask
 
 # 2. Compute Core Properties
 compute pe_core core reduce ave c_pe_atom
