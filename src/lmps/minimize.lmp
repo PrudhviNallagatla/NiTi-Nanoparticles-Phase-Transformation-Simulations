@@ -1,7 +1,7 @@
 # filepath: /home/rimuru/workspace/src/lmps/minimize.lmp
 # GOAL: Robust Energy Minimization for NiTi Nanoparticles (OPTIMIZED)
 # AUTHOR: LAMMPS Genie
-# REVISION: v3 (Static Grouping + Noise Floor Adjustment)
+# REVISION: v4 (Removed environment variable fallback checks)
 
 clear
 units       metal
@@ -10,25 +10,11 @@ boundary    s s s
 atom_style  atomic
 
 # --- VARIABLES ---
-# Defaults (LAMMPS 2Aug2023-compatible):
-# Override via environment variables (preferred): STRUCTURE_FILE, OUTPUT_DIR, POT_LIB, POT_FILE
-# (lowercase variants also supported)
-
+# Must be set via environment variables: STRUCTURE_FILE, OUTPUT_DIR, POT_LIB, POT_FILE
 variable structure_file getenv STRUCTURE_FILE
-if "${structure_file} == NULL" then "variable structure_file getenv structure_file"
-if "${structure_file} == NULL" then "variable structure_file string initial_structure.data"
-
 variable output_dir getenv OUTPUT_DIR
-if "${output_dir} == NULL" then "variable output_dir getenv output_dir"
-if "${output_dir} == NULL" then "variable output_dir string minimization_output"
-
 variable pot_lib getenv POT_LIB
-if "${pot_lib} == NULL" then "variable pot_lib getenv pot_lib"
-if "${pot_lib} == NULL" then "variable pot_lib string library.meam"
-
 variable pot_file getenv POT_FILE
-if "${pot_file} == NULL" then "variable pot_file getenv pot_file"
-if "${pot_file} == NULL" then "variable pot_file string NiTi.meam"
 
 # --- SETUP ---
 read_data   ${structure_file}
