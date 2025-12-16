@@ -72,8 +72,8 @@ variable rcut    equal sqrt(v_rcut_sq)
 
 # --- IMPORTANT: dynamic groups can't be used with "group ... subtract" ---
 # Create boolean masks and define BOTH groups as dynamic.
-variable core_mask    atom (v_rsq <  v_rcut_sq)
-variable surface_mask atom (v_rsq >= v_rcut_sq)
+variable core_mask    atom "v_rsq < v_rcut_sq"
+variable surface_mask atom "v_rsq >= v_rcut_sq"
 
 # Run 0 needs an integrator to avoid "atoms won't move" warning
 fix __int all nve
