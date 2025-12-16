@@ -73,7 +73,8 @@ fix bal all balance 5000 1.05 rcb
 # 3. COMPUTATIONS (Optimized)
 # ==========================================================================
 # --- A. Time & Cost ---
-variable t_elapsed internal elapsed
+# FIXED: Use 'equal' instead of 'internal' for compatibility
+variable t_elapsed equal elapsed
 variable cpu_hours equal v_t_elapsed/3600.0
 
 # --- B. Core vs Surface ---
