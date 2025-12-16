@@ -177,9 +177,26 @@ echo "[3/3] Running Thermal Cycle (sequentially)..."
 for datafile in "${DATA_FILES[@]}"; do
     [[ ! -f "${datafile}" ]] && continue
     structure_name=$(get_base_name "${datafile}")
+
     indata="data/raw_output/${structure_name}/minimize/minimized.data"
     outdir="data/raw_output/${structure_name}/thermal_cycle"
     restart_dir="${outdir}/restart_files"
+
+    # Thermal-cycle completion bookkeeping (separate from minimization)
+    marker="${outdir}/.thermal_cycle_complete"
+    output_check="${outdir}/final.data"
+    logfile="logs/thermal_${structure_name}.log"
+
+    if [[ -f "${marker}" ]]; then
+        echo "   ✓ ${structure_name} (thermal cycle already done)"
+        continue
+    fi
+
+    if [[ ! -f "${indata}" ]]; then
+        echo "ERROR: Missing minimized input data: ${indata}" >&2
+        exit 1
+    fi
+
     mkdir -p "${outdir}" "${restart_dir}"
 
     # Auto-resume from newest checkpoint in restart_files/
@@ -201,10 +218,10 @@ for datafile in "${DATA_FILES[@]}"; do
         "${RESTART_ARGS[@]}" \
         -in src/lmps/sme_thermal_cycle.lmp \
         2>&1 | tee "${logfile}"
-        
+
     if [[ -f "${output_check}" ]]; then
         touch "${marker}"
-        echo "           ✓ ${structure_name} complete."
+        echo "           ✓ ${structure_name} thermal cycle complete."
     else
         echo "           ✗ ${structure_name} FAILED (check ${logfile})" >&2
         exit 1
