@@ -135,14 +135,9 @@ print "  text_every    = ${text_every} steps (~${dT_text} K)"
 print "  dump_every    = ${dump_every} steps (~${dT_dump} K)"
 print "  summary_every = ${summary_every} steps (~${dT_summary} K)"
 
-# --- ELAPSED WALLTIME IN D/H/M/S (cpu is seconds) ---
-variable cpu_s    equal cpu
-variable cpu_dayT equal v_cpu_s/86400.0
-variable cpu_hrT  equal v_cpu_s/3600.0
-variable cpu_days equal floor(v_cpu_s/86400.0)
-variable cpu_hrs  equal floor((v_cpu_s-86400.0*v_cpu_days)/3600.0)
-variable cpu_min  equal floor((v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs)/60.0)
-variable cpu_sec  equal (v_cpu_s-86400.0*v_cpu_days-3600.0*v_cpu_hrs-60.0*v_cpu_min)
+# --- ELAPSED WALLTIME (single column, hours with decimals) ---
+# cpu is seconds (LAMMPS thermo keyword). Convert to hours for clean log output.
+variable cpu_hr equal cpu/3600.0
 
 # simulation time (metal units => ps)
 variable sim_ps equal time
@@ -151,27 +146,22 @@ variable sim_ns equal v_sim_ps/1000.0
 # Stage label (string)
 variable STAGE string "init"
 
-# IMPORTANT: thermo prints to terminal + log (keep it compact)
+# IMPORTANT: thermo prints to terminal + log (keep it compact, but include full energies)
 thermo      ${summary_every}
-thermo_style custom step temp v_frac_aus pe vol v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
+thermo_style custom step temp epair emol etotal press vol v_frac_aus v_cpu_hr
 thermo_modify flush yes
 
-# Keep your high-res file outputs unchanged:
-#  - fix data_out every ${text_every} (0.1 K)
-#  - fix summary_out every ${summary_every} (1.0 K)
-#  - dump every ${dump_every} (0.5 K)
-
-# High-res hysteresis/metrics file (0.1 K)
+# High-res hysteresis/metrics file (0.1 K) + add epair/emol/etotal + cpu_hr
 fix data_out all print ${text_every} &
-    "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(pe) $(ke) $(etotal) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(cpu) $(v_cpu_days) $(v_cpu_hrs) $(v_cpu_min) $(v_cpu_sec)" &
+    "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(epair) $(emol) $(pe) $(ke) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
     file ${output_dir}/hysteresis.txt screen no &
-    title "# STAGE step sim_ps T_global T_core PE KE Etot Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_s cpu_days cpu_hrs cpu_min cpu_sec"
+    title "# STAGE step sim_ps T_global T_core E_pair E_mol PE KE TotEng Press Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_hours"
 
-# NEW: lower-frequency summary file (1.0 K)
+# Lower-frequency summary file (1.0 K) + add epair/emol/etotal + cpu_hr
 fix summary_out all print ${summary_every} &
-    "${STAGE} $(step) $(v_sim_ns) $(temp) $(c_T_core) $(pe) $(etotal) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hrT)" &
+    "${STAGE} $(step) $(v_sim_ns) $(temp) $(c_T_core) $(epair) $(emol) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
     file ${output_dir}/stage_summary.txt screen no &
-    title "# STAGE step sim_ns T_global T_core PE Etot Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
+    title "# STAGE step sim_ns T_global T_core E_pair E_mol TotEng Press Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
 
 # Dump every 0.5 K  (FIXED: add dump frequency argument)
 dump 1 all custom ${dump_every} ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
