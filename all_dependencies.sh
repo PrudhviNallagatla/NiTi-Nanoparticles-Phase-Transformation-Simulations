@@ -147,6 +147,14 @@ sudo apt-get install -y --no-install-recommends \
     bc \
     time
 
+sudo snap install zellij --classic
+
+warn "═══════════════════════════════════════════════════════════════"
+warn " zellij is a simple terminal workspace manager (like tmux) - always useful"
+warn " ═══════════════════════════════════════════════════════════════"
+warn "  NOTE: GUI tools (e.g., Ovito) are NOT installed in this script"
+warn "  Please install them manually if needed."
+
 log "✓ System dependencies installed"
 
 #==============================================================================

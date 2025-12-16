@@ -179,31 +179,26 @@ for datafile in "${DATA_FILES[@]}"; do
     structure_name=$(get_base_name "${datafile}")
     indata="data/raw_output/${structure_name}/minimize/minimized.data"
     outdir="data/raw_output/${structure_name}/thermal_cycle"
-    marker="${outdir}/.thermal_cycle_complete"
-    output_check="${outdir}/final.data"
-    
-    if [[ -f "${marker}" ]]; then
-        echo "   ✓ ${structure_name} (already done)"
-        continue
+    restart_dir="${outdir}/restart_files"
+    mkdir -p "${outdir}" "${restart_dir}"
+
+    # Auto-resume from newest checkpoint in restart_files/
+    latest_restart=$(ls -1t "${restart_dir}"/restart[12].* 2>/dev/null | head -n 1 || true)
+    if [[ -n "${latest_restart}" ]]; then
+        echo "   ↳ Found restart checkpoint: ${latest_restart}"
+        RESTART_ARGS=(-var restart_file "${latest_restart}")
+    else
+        RESTART_ARGS=(-var restart_file none)
     fi
-    if [[ ! -f "${indata}" ]]; then
-        echo "   ✗ ${structure_name} - minimized data missing, skipping" >&2
-        continue
-    fi
-    mkdir -p "${outdir}"
-    
-    mem="${MEM_ESTIMATES[$structure_name]}"
-    echo "   → Running ${structure_name} (${MPI_RANKS} ranks, ~${mem} GB)..."
-    logfile="logs/thermal_cycle_${structure_name}.log"
-    
-    # REMOVED --allow-run-as-root
-    # UPDATED to use dynamic MPI_RANKS and 'tee' for logging
+
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
         -var input_data "${indata}" \
         -var output_dir "${outdir}" \
+        -var restart_dir "${restart_dir}" \
         -var seed ${SEED} \
         -var pot_lib "${POT_LIB}" \
         -var pot_file "${POT_FILE}" \
+        "${RESTART_ARGS[@]}" \
         -in src/lmps/sme_thermal_cycle.lmp \
         2>&1 | tee "${logfile}"
         

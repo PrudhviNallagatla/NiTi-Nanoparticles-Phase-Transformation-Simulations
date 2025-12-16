@@ -11,7 +11,12 @@ boundary    s s s
 atom_style  atomic
 
 # --- INPUT (Driven by Shell Script) ---
-read_data   ${input_data}
+# Either start fresh from minimized data OR resume from a restart file.
+# The shell script will pass: -var restart_file none   (fresh)
+# or                         -var restart_file /path/to/restartX.<step> (resume)
+if "${restart_file} != none" then "print \"Reading restart: ${restart_file}\""
+if "${restart_file} != none" then "read_restart ${restart_file}"
+if "${restart_file} == none" then "read_data   ${input_data}"
 
 # Ensure correct masses for temperature/kinetics (assumes type 1=Ni, type 2=Ti)
 mass 1 58.6934
@@ -130,6 +135,17 @@ compute pe_core_sum core reduce sum c_pe_all
 # 4. OUTPUT STREAMS  (Temperature-synchronized)
 # ============================================
 
+# --- RESTART / CHECKPOINTING (for crash recovery) ---
+# Write alternating restart files every N steps (keeps last 2 checkpoints).
+# Choose based on walltime tolerance; 25000–100000 is typical.
+# Expect restart_dir to be passed from the shell script
+# e.g., output_dir=.../thermal_cycle, restart_dir=.../thermal_cycle/restart_files
+# (LAMMPS itself won't create folders reliably; create it in the runner script.)
+variable restart_dir string "${restart_dir}"
+
+variable restart_every equal 50000
+restart ${restart_every} ${restart_dir}/restart1.* ${restart_dir}/restart2.*
+
 print "OUTPUT CADENCE:"
 print "  text_every    = ${text_every} steps (~${dT_text} K)"
 print "  dump_every    = ${dump_every} steps (~${dT_dump} K)"
@@ -151,16 +167,16 @@ thermo      ${summary_every}
 thermo_style custom step temp epair emol etotal press vol v_frac_aus v_cpu_hr
 thermo_modify flush yes
 
-# High-res hysteresis/metrics file (0.1 K) + add epair/emol/etotal + cpu_hr
+# High-res hysteresis/metrics file (0.1 K)  (append so resume won't overwrite)
 fix data_out all print ${text_every} &
     "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(epair) $(emol) $(pe) $(ke) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
-    file ${output_dir}/hysteresis.txt screen no &
+    file ${output_dir}/hysteresis.txt append yes screen no &
     title "# STAGE step sim_ps T_global T_core E_pair E_mol PE KE TotEng Press Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_hours"
 
-# Lower-frequency summary file (1.0 K) + add epair/emol/etotal + cpu_hr
+# Lower-frequency summary file (1.0 K)  (append so resume won't overwrite)
 fix summary_out all print ${summary_every} &
     "${STAGE} $(step) $(v_sim_ns) $(temp) $(c_T_core) $(epair) $(emol) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
-    file ${output_dir}/stage_summary.txt screen no &
+    file ${output_dir}/stage_summary.txt append yes screen no &
     title "# STAGE step sim_ns T_global T_core E_pair E_mol TotEng Press Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
 
 # Dump every 0.5 K  (FIXED: add dump frequency argument)
@@ -212,6 +228,6 @@ fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${run_hold}
 
 # --- FINAL OUTPUT ---
-# Match what the shell script expects (final.data)
 write_data ${output_dir}/final.data
+write_restart ${output_dir}/restart.final
 print "SIMULATION COMPLETE."
