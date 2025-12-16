@@ -53,14 +53,15 @@ variable    run_hold    equal 50000
 # ----------------------------
 # ΔT per step = T_rate*dt  (K/step)
 # steps_per_dT = dT/(T_rate*dt)
-# Use ceil() so we do not output *less frequently* than requested.
+# NOTE: This LAMMPS build does NOT support if()/max() in variable formulas.
+# With dt>0 and T_rate>0, ceil(...) is always >= 1, so no clamp is needed.
 variable    dT_text    equal 0.1     # K per hysteresis point
 variable    dT_dump    equal 0.5     # K per snapshot
 variable    dT_summary equal 1.0     # K per summary line
 
-variable    text_every    equal if(ceil(v_dT_text/(v_T_rate*dt))<1,1,ceil(v_dT_text/(v_T_rate*dt)))
-variable    dump_every    equal if(ceil(v_dT_dump/(v_T_rate*dt))<1,1,ceil(v_dT_dump/(v_T_rate*dt)))
-variable    summary_every equal if(ceil(v_dT_summary/(v_T_rate*dt))<1,1,ceil(v_dT_summary/(v_T_rate*dt)))
+variable    text_every    equal ceil(v_dT_text/(v_T_rate*dt))
+variable    dump_every    equal ceil(v_dT_dump/(v_T_rate*dt))
+variable    summary_every equal ceil(v_dT_summary/(v_T_rate*dt))
 
 # --- DEFINE CORE (Exclude Surface) ---
 # Use true mass-weighted COM (important for Ni/Ti)
@@ -89,8 +90,10 @@ fix __int all nve
 run 0
 unfix __int
 
-group core    dynamic all var core_mask    every ${text_every}
-group surface dynamic all var surface_mask every ${text_every}
+# Define dynamic groups (update cadence can be summary-based to reduce overhead)
+# If you prefer maximum accuracy of core/surface membership, keep ${text_every}.
+group core    dynamic all var core_mask    every ${summary_every}
+group surface dynamic all var surface_mask every ${summary_every}
 
 # ============================================
 # 3. PHASE DIAGNOSTICS (THE FIX)
@@ -148,13 +151,9 @@ variable sim_ns equal v_sim_ps/1000.0
 # Stage label (string)
 variable STAGE string "init"
 
-# IMPORTANT: thermo prints to terminal + log
-# Make the log readable: print progress every 1.0 K (summary cadence), not every 0.1 K
+# IMPORTANT: thermo prints to terminal + log (keep it compact)
 thermo      ${summary_every}
-
-# Compact thermo line (still includes elapsed walltime as D/H/M/S fields)
-# (LAMMPS can't print a single "D:H:M:S" string in thermo; this is the cleanest minimal set.)
-thermo_style custom step v_sim_ns temp c_T_core v_frac_aus pe vol cpu v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
+thermo_style custom step temp v_frac_aus pe vol v_cpu_days v_cpu_hrs v_cpu_min v_cpu_sec
 thermo_modify flush yes
 
 # Keep your high-res file outputs unchanged:
@@ -174,8 +173,8 @@ fix summary_out all print ${summary_every} &
     file ${output_dir}/stage_summary.txt screen no &
     title "# STAGE step sim_ns T_global T_core PE Etot Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
 
-# Dump every 0.5 K
-dump 1 all custom ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
+# Dump every 0.5 K  (FIXED: add dump frequency argument)
+dump 1 all custom ${dump_every} ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
 dump_modify 1 sort id element Ni Ti
 
 # ============================================
