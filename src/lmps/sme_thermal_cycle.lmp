@@ -1,7 +1,5 @@
 # ==========================================================================
-# GOAL: Robust NiTi Nanoparticle Hysteresis (Refined for Size Effect Study)
-# TARGETS: 5nm, 10nm, 15nm, 20nm Single Crystals
-# SYSTEM: Linux / Standard MPI
+# ROBUST NiTi NANOPARTICLES HYSTERESIS (IQ 180 VERSION)
 # ==========================================================================
 
 clear
@@ -10,224 +8,186 @@ dimension   3
 boundary    s s s   
 atom_style  atomic
 
-# --- INPUT (Driven by Shell Script) ---
-# Either start fresh from minimized data OR resume from a restart file.
-# The shell script will pass: -var restart_file none   (fresh)
-# or                         -var restart_file /path/to/restartX.<step> (resume)
-if "${restart_file} != none" then "print \"Reading restart: ${restart_file}\""
+# --- INPUT VARIABLES (Passed from Shell) ---
+# restart_file: path to file OR "none"
+# input_data:   path to data file (used if restart_file is none)
+# pot_lib/file: potential paths
+# output_dir:   where to dump logs/images
+
+print "=========================================================="
+print " RESTART STATUS: ${restart_file}"
+print "=========================================================="
+
+# 1. INITIALIZATION LOGIC (Split for safety)
+# ----------------------------------------------------------------
+if "${restart_file} == none" then "read_data ${input_data}"
+
 if "${restart_file} != none" then "read_restart ${restart_file}"
-if "${restart_file} == none" then "read_data   ${input_data}"
 
-# Ensure correct masses for temperature/kinetics (assumes type 1=Ni, type 2=Ti)
-mass 1 58.6934
-mass 2 47.867
-
-# --- POTENTIAL ---
+# Reset potential (Required after read_restart for many potentials like MEAM)
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
-# --- OPTIMIZATION ---
+# 2. SYSTEM SETTINGS
+# ----------------------------------------------------------------
+# Mass definition is only strictly needed if data file lacks it, 
+# but good for safety.
+mass 1 58.6934
+mass 2 47.867
+
 neighbor    1.0 bin
-# was: neigh_modify delay 0 every 1 check yes
-# allow up to 10 steps between rebuilds; 'check yes' still rebuilds earlier if needed
 neigh_modify delay 0 every 10 check yes
 
-# LOAD BALANCING FOR VACUUM NANOPARTICLES
+# Load Balancing (Crucial for non-periodic/vacuum systems)
 comm_style tiled
-# was: fix bal all balance 1000 1.05 rcb
 fix bal all balance 5000 1.05 rcb
 
-# ============================================
-# 1. SETUP & VARIABLES
-# ============================================
+# 3. VARIABLES & PHYSICS
+# ----------------------------------------------------------------
 timestep    0.002
 
-# Cycle Parameters (Adjusted for Phase Transformation)
 variable    T_low   equal 200.0
 variable    T_high  equal 500.0
 variable    T_rate  equal 0.1      # K/ps
-variable    tdamp   equal 100.0*dt
+variable    tdamp   equal 100.0*dt # Standard Nose-Hoover damping
 
-# Duration Calculations
+# Duration Math
 variable    delta_T     equal (v_T_high-v_T_low)
 variable    run_ramp    equal round(v_delta_T/v_T_rate/dt)
 variable    run_hold    equal 50000
 
-# ----------------------------
-# OUTPUT CADENCE (ΔT-based)
-# ----------------------------
-# ΔT per step = T_rate*dt  (K/step)
-# steps_per_dT = dT/(T_rate*dt)
-# NOTE: This LAMMPS build does NOT support if()/max() in variable formulas.
-# With dt>0 and T_rate>0, ceil(...) is always >= 1, so no clamp is needed.
-variable    dT_text    equal 0.1     # K per hysteresis point
-variable    dT_dump    equal 0.5     # K per snapshot
-variable    dT_summary equal 1.0     # K per summary line
+# Cumulative Step Targets (The key to safe restarts)
+# We calculate absolute step numbers for the end of each stage.
+variable    end_stage0  equal ${run_hold}
+variable    end_stage1  equal ${end_stage0}+${run_ramp}
+variable    end_stage2  equal ${end_stage1}+${run_hold}
+variable    end_stage3  equal ${end_stage2}+${run_ramp}
+variable    end_stage4  equal ${end_stage3}+${run_hold}
 
-variable    text_every    equal ceil(v_dT_text/(v_T_rate*dt))
-variable    dump_every    equal ceil(v_dT_dump/(v_T_rate*dt))
-variable    summary_every equal ceil(v_dT_summary/(v_T_rate*dt))
+# 4. INITIAL VELOCITIES (Only for fresh runs)
+# ----------------------------------------------------------------
+# We check 'step' effectively. If step is 0, we must initialize.
+# We create velocities at T_high because Stage 0 is equilibration at T_high.
+if "$(step) == 0" then &
+   "velocity all create ${T_high} 12345 mom yes rot yes dist gaussian"
 
-# --- DEFINE CORE (Exclude Surface) ---
-# Use true mass-weighted COM (important for Ni/Ti)
+# 5. GROUPS & COMPUTES
+# ----------------------------------------------------------------
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
-
-# Radial distance squared from COM
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
-
-# Robust particle radius estimate: max(rsq) over atoms
 compute r2max all reduce max v_rsq
-
-# Define Core Radius as ~80% of particle radius (rcut^2 = 0.8^2 * rmax^2 = 0.64*rmax^2)
 variable rcut_sq equal 0.64*c_r2max
-variable rcut    equal sqrt(v_rcut_sq)
 
-# --- IMPORTANT: dynamic groups can't be used with "group ... subtract" ---
-# Create boolean masks and define BOTH groups as dynamic.
 variable core_mask    atom "v_rsq < v_rcut_sq"
 variable surface_mask atom "v_rsq >= v_rcut_sq"
 
-# Run 0 needs an integrator to avoid "atoms won't move" warning
+# Initial run 0 to setup groups (avoids static group errors)
 fix __int all nve
 run 0
 unfix __int
 
-# Define dynamic groups (update cadence can be summary-based to reduce overhead)
-# If you prefer maximum accuracy of core/surface membership, keep ${text_every}.
-group core    dynamic all var core_mask    every ${summary_every}
-group surface dynamic all var surface_mask every ${summary_every}
+# Update groups occasionally
+group core    dynamic all var core_mask    every 1000
+group surface dynamic all var surface_mask every 1000
 
-# ============================================
-# 3. PHASE DIAGNOSTICS (THE FIX)
-# ============================================
-
+# Diagnostics
 compute pe_all all pe/atom
 compute T_core core temp
-
-# --- CENTROSYMMETRY PARAMETER (CSP) ---
 compute csym all centro/atom bcc
-
-# --- (NEW) SHAPE/SIZE + MOBILITY METRICS ---
-# Radius of gyration (tracks particle size/compactness)
-compute rg_all  all  gyration
-compute rg_core core gyration
-
-# Mean-squared displacement (mobility / transformation activity indicator)
-# Note: momentum removal helps keep MSD meaningful for a free nanoparticle
 compute msd_all all msd
 
-# --- STATIC PHASE DETECTION ---
+# Phase Fraction (Austenite < 1.5 CSP)
 variable CSP_CUTOFF equal 1.5
 variable is_austenite atom "c_csym < v_CSP_CUTOFF"
 compute n_aus core reduce sum v_is_austenite
 variable n_core equal "count(core)"
 variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-6)"
-compute ave_csp core reduce ave c_csym
 
-# --- (NEW) CORE ENERGY METRICS ---
-compute pe_core_avg core reduce ave c_pe_all
-compute pe_core_sum core reduce sum c_pe_all
-
-# ============================================
-# 4. OUTPUT STREAMS  (Temperature-synchronized)
-# ============================================
-
-# --- RESTART / CHECKPOINTING (for crash recovery) ---
-# Write alternating restart files every N steps (keeps last 2 checkpoints).
-# Choose based on walltime tolerance; 25000–100000 is typical.
-# Expect restart_dir to be passed from the shell script
-# e.g., output_dir=.../thermal_cycle, restart_dir=.../thermal_cycle/restart_files
-# (LAMMPS itself won't create folders reliably; create it in the runner script.)
-variable restart_dir string "${restart_dir}"
-
-variable restart_every equal 50000
-restart ${restart_every} ${restart_dir}/restart1.* ${restart_dir}/restart2.*
-
-print "OUTPUT CADENCE:"
-print "  text_every    = ${text_every} steps (~${dT_text} K)"
-print "  dump_every    = ${dump_every} steps (~${dT_dump} K)"
-print "  summary_every = ${summary_every} steps (~${dT_summary} K)"
-
-# --- ELAPSED WALLTIME (single column, hours with decimals) ---
-# cpu is seconds (LAMMPS thermo keyword). Convert to hours for clean log output.
+# 6. OUTPUTS
+# ----------------------------------------------------------------
 variable cpu_hr equal cpu/3600.0
-
-# simulation time (metal units => ps)
 variable sim_ps equal time
-variable sim_ns equal v_sim_ps/1000.0
 
-# Stage label (string)
-variable STAGE string "init"
+# Restart Strategy:
+# 1. Rolling restart (safety against crash)
+variable restart_every equal 10000
+restart ${restart_every} ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
-# IMPORTANT: thermo prints to terminal + log (keep it compact, but include full energies)
-thermo      ${summary_every}
-thermo_style custom step temp epair emol etotal press vol v_frac_aus v_cpu_hr
-thermo_modify flush yes
-
-# High-res hysteresis/metrics file (0.1 K)  (append so resume won't overwrite)
-fix data_out all print ${text_every} &
-    "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(epair) $(emol) $(pe) $(ke) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_pe_core_avg) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
+# 2. Output Files
+fix data_out all print 1000 &
+    "${STAGE} $(step) $(v_sim_ps) $(temp) $(c_T_core) $(epair) $(press) $(vol) $(v_frac_aus) $(v_cpu_hr)" &
     file ${output_dir}/hysteresis.txt append yes screen no &
-    title "# STAGE step sim_ps T_global T_core E_pair E_mol PE KE TotEng Press Vol fracAUS aveCSP pe_core_avg Rg_all Rg_core MSD4 cpu_hours"
+    title "# STAGE step sim_ps T_global T_core E_pair Press Vol fracAUS cpu_hr"
 
-# Lower-frequency summary file (1.0 K)  (append so resume won't overwrite)
-fix summary_out all print ${summary_every} &
-    "${STAGE} $(step) $(v_sim_ns) $(temp) $(c_T_core) $(epair) $(emol) $(etotal) $(press) $(vol) $(v_frac_aus) $(c_ave_csp) $(c_rg_all) $(c_rg_core) $(c_msd_all[4]) $(v_cpu_hr)" &
-    file ${output_dir}/stage_summary.txt append yes screen no &
-    title "# STAGE step sim_ns T_global T_core E_pair E_mol TotEng Press Vol fracAUS aveCSP Rg_all Rg_core MSD4 cpu_hours"
+thermo 1000
+thermo_style custom step temp c_T_core epair press v_frac_aus v_cpu_hr
 
-# Dump every 0.5 K  (FIXED: add dump frequency argument)
-dump 1 all custom ${dump_every} ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
+# Dump (Snapshot)
+dump 1 all custom 5000 ${output_dir}/dump.cycle.* id type x y z c_csym c_pe_all
 dump_modify 1 sort id element Ni Ti
 
-# ============================================
-# 5. THERMAL PROTOCOL
-# ============================================
+# ==========================================================================
+# 7. THERMAL PROTOCOL EXECUTION
+# ==========================================================================
+# Fix Momentum: Removes net translation/rotation every 100 steps.
+# Essential for vacuum nanoparticles to prevent "flying ice cube" artifact.
+fix mom all momentum 100 linear 1 1 1 angular
 
-print "=========================================="
-print " SYSTEM DIAGNOSTICS "
-print " Core Atoms: ${n_core}"
-print " Cutoff Radius: ${rcut}"
-print "=========================================="
+print " "
+print ">>> SIMULATION PLAN (Step Targets):"
+print "    Stage 0 (Hold High): Ends at ${end_stage0}"
+print "    Stage 1 (Cooling):   Ends at ${end_stage1}"
+print "    Stage 2 (Hold Low):  Ends at ${end_stage2}"
+print "    Stage 3 (Heating):   Ends at ${end_stage3}"
+print "    Stage 4 (Hold High): Ends at ${end_stage4}"
+print " "
 
-# --- EQUILIBRATION (High T - Austenite) ---
-variable STAGE string "stage0_hold_high"
-print ">>> STAGE 0: Equilibrating Austenite (${T_high} K)..."
-fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
-run ${run_hold}
+# --- STAGE 0: EQUILIBRATION (Austenite) ---
+if "$(step) < ${end_stage0}" then &
+   "variable STAGE string stage0_hold" &
+   "print '>>> STARTING STAGE 0: Equilibrate at ${T_high} K'" &
+   "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
+   "run ${end_stage0} upto" &
+   "unfix 1" &
+   "write_restart ${output_dir}/restart.stage0_end"
 
-# --- COOLING (A -> M) ---
-variable STAGE string "stage1_cool"
-print ">>> STAGE 1: Cooling (${T_high} -> ${T_low} K)..."
-unfix 1
-fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}
-run ${run_ramp}
+# --- STAGE 1: COOLING (Austenite -> Martensite) ---
+if "$(step) < ${end_stage1}" then &
+   "variable STAGE string stage1_cool" &
+   "print '>>> STARTING STAGE 1: Cool ${T_high} -> ${T_low} K'" &
+   "fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}" &
+   "run ${end_stage1} upto" &
+   "unfix 1" &
+   "write_restart ${output_dir}/restart.stage1_end"
 
-# --- HOLDING (Martensite?) ---
-variable STAGE string "stage2_hold_low"
-print ">>> STAGE 2: Holding Low Temp (${T_low} K)..."
-unfix 1
-fix 1 all nvt temp ${T_low} ${T_low} ${tdamp}
-run ${run_hold}
+# --- STAGE 2: HOLD LOW (Relax Martensite) ---
+if "$(step) < ${end_stage2}" then &
+   "variable STAGE string stage2_hold" &
+   "print '>>> STARTING STAGE 2: Hold at ${T_low} K'" &
+   "fix 1 all nvt temp ${T_low} ${T_low} ${tdamp}" &
+   "run ${end_stage2} upto" &
+   "unfix 1" &
+   "write_restart ${output_dir}/restart.stage2_end"
 
-# --- HEATING (M -> A) ---
-variable STAGE string "stage3_heat"
-print ">>> STAGE 3: Heating (${T_low} -> ${T_high} K)..."
-unfix 1
-fix 1 all nvt temp ${T_low} ${T_high} ${tdamp}
-run ${run_ramp}
+# --- STAGE 3: HEATING (Martensite -> Austenite) ---
+if "$(step) < ${end_stage3}" then &
+   "variable STAGE string stage3_heat" &
+   "print '>>> STARTING STAGE 3: Heat ${T_low} -> ${T_high} K'" &
+   "fix 1 all nvt temp ${T_low} ${T_high} ${tdamp}" &
+   "run ${end_stage3} upto" &
+   "unfix 1" &
+   "write_restart ${output_dir}/restart.stage3_end"
 
-# --- HOLDING (Austenite Recovery) ---
-variable STAGE string "stage4_hold_high"
-print ">>> STAGE 4: Holding High Temp (${T_high} K)..."
-unfix 1
-fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
-run ${run_hold}
+# --- STAGE 4: HOLD HIGH (Final Recovery) ---
+if "$(step) < ${end_stage4}" then &
+   "variable STAGE string stage4_hold" &
+   "print '>>> STARTING STAGE 4: Hold at ${T_high} K'" &
+   "fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}" &
+   "run ${end_stage4} upto" &
+   "unfix 1" &
+   "write_restart ${output_dir}/restart.stage4_end"
 
-# --- FINAL OUTPUT ---
-write_data ${output_dir}/final.data
-write_restart ${output_dir}/restart.final
 print "SIMULATION COMPLETE."

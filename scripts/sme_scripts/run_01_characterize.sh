@@ -1,8 +1,14 @@
 #!/bin/bash
 # filepath: /home/rimuru/workspace/scripts/sme_scripts/run_01_characterize.sh
-# MODIFIED: Dynamically adapts MPI/OMP settings to the VM's core count.
-# STEP 1: Minimize
-# STEP 2: Thermal Cycle (to find Ms, Mf, As, Af)
+# ==========================================================================
+# ROBUST CHARACTERIZATION RUNNER (IQ 180 VERSION)
+# ==========================================================================
+# MODIFIED: 
+#  1. Matches new LAMMPS restart naming (stage*_end + rolling).
+#  2. Safer memory estimation for MEAM/Tiled comms.
+#  3. Auto-detects core count for hybrid MPI/OMP.
+# ==========================================================================
+
 set -euo pipefail
 
 # ============================================
@@ -25,8 +31,6 @@ TOTAL_MEM_GB=$(awk '/MemTotal/ {printf "%.0f\n", $2/1024/1024}' /proc/meminfo)
 # ============================================
 # 🚀 DYNAMIC PERFORMANCE SETTINGS
 # ============================================
-# This logic replaces assign_ranks() and static OMP_NUM_THREADS
-# It picks the best hybrid setup based on available cores.
 echo "INFO: Total cores detected: ${TOTAL_CORES}"
 
 if [[ ${TOTAL_CORES} -ge 16 ]]; then
@@ -53,10 +57,9 @@ else
     MPI_RANKS=${TOTAL_CORES}
     echo "INFO: Using fallback PURE MPI profile (MPI_RANKS=${TOTAL_CORES}, OMP_NUM_THREADS=1)"
 fi
-# ============================================
 
 # ============================================
-# Pre-flight Checks & Setup
+# Pre-flight Checks
 # ============================================
 if [[ ! -x "${LAMMPS_BIN}" ]]; then
     echo "ERROR: LAMMPS binary not found at ${LAMMPS_BIN}" >&2; exit 1
@@ -70,7 +73,6 @@ mkdir -p logs
 
 echo "=========================================="
 echo "SME Pipeline [PART 1]: CHARACTERIZATION"
-echo "(Minimize -> Thermal Cycle)"
 echo "=========================================="
 echo "Hardware detected:"
 echo "   • CPU cores: ${TOTAL_CORES}"
@@ -79,7 +81,6 @@ echo "   • Files to process: ${#DATA_FILES[@]}"
 echo "Performance:"
 echo "   • OMP_NUM_THREADS: ${OMP_NUM_THREADS}"
 echo "   • MPI_RANKS: ${MPI_RANKS}"
-echo "   • Total cores used per job: $((${OMP_NUM_THREADS} * ${MPI_RANKS}))"
 echo "=========================================="
 
 # ============================================
@@ -88,6 +89,7 @@ echo "=========================================="
 get_base_name() {
     basename "$1" .data
 }
+
 get_atom_count() {
     local datafile=$1
     [[ ! -f "${datafile}" ]] && echo "0" && return
@@ -95,11 +97,12 @@ get_atom_count() {
     count=$(grep -m1 "atoms" "${datafile}" 2>/dev/null | awk '{print $1}')
     echo "${count:-0}"
 }
+
 estimate_memory() {
     local atoms=$1
-    python3 -c "print(max(1, int(${atoms} * 18 / 1024 / 1024) + 1))"
+    # MODIFIED: Increased to 500 bytes/atom for MEAM + Neighbor lists safety
+    python3 -c "print(max(1, int(${atoms} * 500 / 1024 / 1024) + 1))"
 }
-# Removed assign_ranks()
 
 # ============================================
 # STEP 1: Analyze structures
@@ -124,7 +127,7 @@ for datafile in "${DATA_FILES[@]}"; do
     ATOM_COUNTS["${structure_name}"]=${atoms}
     MEM_ESTIMATES["${structure_name}"]=${mem}
     echo "   • ${structure_name}"
-    echo "       Atoms: ${atoms} | RAM: ~${mem} GB | MPI ranks: ${MPI_RANKS} (dynamic)"
+    echo "       Atoms: ${atoms} | RAM: ~${mem} GB | MPI ranks: ${MPI_RANKS}"
 done
 
 # ============================================
@@ -145,12 +148,9 @@ for datafile in "${DATA_FILES[@]}"; do
     fi
     mkdir -p "${outdir}"
     
-    mem="${MEM_ESTIMATES[$structure_name]}"
-    echo "   → Running ${structure_name} (${MPI_RANKS} ranks, ~${mem} GB)..."
+    echo "   → Running ${structure_name}..."
     logfile="logs/min_${structure_name}.log"
     
-    # REMOVED --allow-run-as-root
-    # UPDATED to use dynamic MPI_RANKS and 'tee' for logging
     mpirun -n "${MPI_RANKS}" "${LAMMPS_BIN}" \
         -var structure_file "${datafile}" \
         -var output_dir "${outdir}" \
@@ -182,7 +182,6 @@ for datafile in "${DATA_FILES[@]}"; do
     outdir="data/raw_output/${structure_name}/thermal_cycle"
     restart_dir="${outdir}/restart_files"
 
-    # Thermal-cycle completion bookkeeping (separate from minimization)
     marker="${outdir}/.thermal_cycle_complete"
     output_check="${outdir}/final.data"
     logfile="logs/thermal_${structure_name}.log"
@@ -199,10 +198,14 @@ for datafile in "${DATA_FILES[@]}"; do
 
     mkdir -p "${outdir}" "${restart_dir}"
 
-    # Auto-resume from newest checkpoint in restart_files/
-    latest_restart=$(ls -1t "${restart_dir}"/restart[12].* 2>/dev/null | head -n 1 || true)
+    # --- ROBUST RESTART LOGIC ---
+    # 1. Prefer completed stage boundaries (restart.stage*_end)
+    # 2. Fallback to rolling checkpoints (restart.rolling.*)
+    # 3. Default to none (start fresh)
+    latest_restart=$(ls -1t "${restart_dir}"/restart.stage*_end "${restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
+    
     if [[ -n "${latest_restart}" ]]; then
-        echo "   ↳ Found restart checkpoint: ${latest_restart}"
+        echo "   ↳ Found restart checkpoint: $(basename "${latest_restart}")"
         RESTART_ARGS=(-var restart_file "${latest_restart}")
     else
         RESTART_ARGS=(-var restart_file none)
@@ -239,25 +242,13 @@ echo "=========================================="
 echo ""
 echo "!!! ACTION REQUIRED !!!"
 echo ""
-echo "You must now analyze the thermal cycling results before proceeding."
+echo "1.  Plot the Hysteresis Loop from:"
+echo "    data/raw_output/<structure_name>/thermal_cycle/hysteresis.txt"
+echo "    (Columns: 4=Temp_global, 5=Temp_core, 6=PE, 13=Frac_Aus)"
 echo ""
-echo "1.  Find the output files at:"
-echo "    data/raw_output/<structure_name>/thermal_cycle/thermo_detailed.txt"
+echo "2.  Identify transformation temperatures (Mf, Af)."
 echo ""
-echo "2.  Plot a hysteresis loop (e.g., Potential Energy vs. Temperature)."
+echo "3.  Update 'src/lmps/sme_deformation.lmp' with correct T_low/T_high."
 echo ""
-echo "3.  From the loop, identify the four transformation temperatures:"
-echo "    - Mf (Martensite Finish)"
-echo "    - Af (Austenite Finish)"
-echo ""
-echo "4.  Open your deformation script:"
-echo "    src/lmps/sme_deformation.lmp"
-echo ""
-echo "5.  Update the 'T_low' and 'T_high' variables in that file."
-echo "    - 'T_low' MUST be below Mf."
-echo "    - 'T_high' MUST be above Af."
-echo ""
-echo "6.  Once the .lmp file is updated, run the second script:"
-echo "    ./scripts/run_02_deform.sh"
-echo ""
+echo "4.  Run ./scripts/run_02_deform.sh"
 echo "=========================================="
