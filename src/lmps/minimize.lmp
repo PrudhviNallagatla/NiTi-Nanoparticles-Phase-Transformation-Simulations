@@ -1,6 +1,6 @@
 # ====================================================================
-#  PUBLICATION-GRADE NANOPARTICLE MINIMIZER (v8.0)
-#  Algorithm: SD (De-overlap) -> MD (Anneal) -> CG (Polish)
+#  PUBLICATION-GRADE NANOPARTICLE MINIMIZER (v9.0)
+#  Algorithm: SD -> MD (Anneal) -> FIRE (Descent) -> CG (Polish)
 #  Author: LAMMPS Genie
 # ====================================================================
 
@@ -11,29 +11,25 @@ dimension       3
 boundary        s s s   
 atom_style      atomic
 
-# --- 2. ENVIRONMENT VARIABLES (Universal Input) ---
+# --- 2. ENVIRONMENT VARIABLES ---
 variable structure_file getenv STRUCTURE_FILE
 variable output_dir     getenv OUTPUT_DIR
 variable pot_lib        getenv POT_LIB
 variable pot_file       getenv POT_FILE
 
 # --- 3. JOURNAL-GRADE TOLERANCES ---
-# FTOL = 1.0e-6 is the standard expected by reviewers for "fully relaxed" structures.
-# We achieve this speed by using the MD-Anneal stage first.
+# FTOL = 1.0e-6 is the "Golden Standard" for publication.
 variable ETOL       equal 0.0       
 variable FTOL       equal 1.0e-6    
 variable MAX_ITER   equal 100000    
 variable MAX_EVAL   equal 1000000   
 
-# Setup Output
 shell mkdir -p "${output_dir}"
 
-# --- 4. SYSTEM SETUP (High-Performance Mode) ---
+# --- 4. SYSTEM SETUP ---
 read_data   ${structure_file}
 
-# DYNAMIC LOAD BALANCING (Critical for >10nm sizes)
-# 'rcb' (Recursive Coordinate Bisection) ignores vacuum and assigns 
-# atoms to processors equally.
+# Load Balancing (Crucial for large, vacuum-heavy simulations)
 comm_style tiled
 fix bal all balance 1000 1.1 rcb
 
@@ -42,7 +38,6 @@ pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
 # NEIGHBOR LIST OPTIMIZATION
-# 'delay 5' reduces overhead. 'one 10000' prevents crashes in dense cores.
 neighbor    2.0 bin 
 neigh_modify delay 5 every 1 check yes one 10000
 
@@ -56,48 +51,67 @@ thermo      100
 thermo_style custom step temp pe fmax fnorm cpu
 
 # ====================================================================
-#  STAGE 1: DE-OVERLAP (Safety First)
+#  STAGE 1: DE-OVERLAP (Steepest Descent)
 # ====================================================================
+# Purpose: Soft push to separate overlapping atoms.
+# Prevents "Lost Atom" errors in later stages.
 print " "
-print ">>> [STAGE 1] Steepest Descent: Removing bad contacts..."
+print ">>> [STAGE 1] Steepest Descent: Safety Clearance..."
 
-# Soft push to separate overlapping atoms without blowing up
 min_style sd
 minimize 1.0e-4 1.0e-2 500 5000
 
 # ====================================================================
-#  STAGE 2: THERMAL ANNEALING (The "Journal Quality" Step)
+#  STAGE 2: THERMAL ANNEALING (MD)
 # ====================================================================
-# Why? Large NPs get "jammed" in local minima. A simple minimizer cannot
-# fix this. We use a short MD run (10K) to "shake" atoms into the correct lattice.
+# Purpose: NVE/Limit run to allow surface reconstruction.
+# Minimizers cannot cross energy barriers; MD can.
 
 print " "
-print ">>> [STAGE 2] Thermal Anneal: Shaking out local minima..."
+print ">>> [STAGE 2] Thermal Anneal: Surface Reconstruction..."
 
 reset_timestep 0
 timestep 0.002  # 2.0 fs
 
-# Initialize tiny thermal noise (10 Kelvin)
+# Initialize tiny thermal noise (10 Kelvin) to break symmetry
 velocity all create 10.0 12345 dist gaussian
 
-# Use NVE/Limit to safely integrate even if forces are still high
+# NVE/Limit safely integrates even if forces are slightly high
 fix 1 all nve/limit 0.1
-
-# Run for 2.0 ps (Enough to relax surface stress, short enough to save CPU)
 run 1000
-
 unfix 1
-# Remove velocities (freeze system) for final minimization
+
+# Kill velocity (freeze) to prepare for minimization
 velocity all set 0 0 0
 
 # ====================================================================
-#  STAGE 3: FINAL CONVERGENCE (High Precision)
+#  STAGE 3: INERTIAL RELAXATION (FIRE)
 # ====================================================================
+# Purpose: Rapidly descend into the harmonic basin.
+# FIRE is robust against the "roughness" of MEAM/EAM potentials.
+
 print " "
-print ">>> [STAGE 3] Final Polish: Converging to 1.0e-6 eV/A..."
+print ">>> [STAGE 3] FIRE Minimization: Rapid Descent..."
+
+# FIRE requires a defined timestep (inherited from above: 0.002)
+min_style fire
+
+# Optional: Limit the maximum step size FIRE can take (safety)
+min_modify dmax 0.1 
+
+# We relax to a "good" tolerance (1e-4), but leave "perfect" for CG
+minimize ${ETOL} 1.0e-4 ${MAX_ITER} ${MAX_EVAL}
+
+# ====================================================================
+#  STAGE 4: FINAL CONVERGENCE (Conjugate Gradient)
+# ====================================================================
+# Purpose: Mathematical precision. Polak-Ribiere is most efficient
+# once we are already inside the harmonic well (thanks to FIRE).
+
+print " "
+print ">>> [STAGE 4] CG Polish: Converging to ${FTOL} eV/A..."
 
 min_style cg
-# Switch to quadratic line search (Faster for metals near bottom of well)
 min_modify line quadratic
 minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 
@@ -107,14 +121,10 @@ minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 print " "
 print ">>> Minimization Complete. Saving High-Quality Data..."
 
-# 1. Save Structure
 write_data ${output_dir}/minimized.data
-
-# 2. Save Restart (Crucial for Journals - Proof of reproducibility)
 write_restart ${output_dir}/minimized.restart
 
-# 3. Dump Compressed Trajectory (Last frame only)
-# We dump the final state with all metrics (PE, CSP, Coord)
+# Dump final state with analysis metrics
 dump 1 all custom 1 ${output_dir}/final_state.dump.gz id type x y z c_pe_atom c_csym c_coord
 dump_modify 1 sort id
 run 0
@@ -122,26 +132,25 @@ run 0
 # ====================================================================
 #  FINAL ANALYSIS (Core vs Surface)
 # ====================================================================
-# This section calculates the energy of the "bulk-like" core, 
-# ignoring surface effects. This is the value you report in tables.
+# Calculates bulk-like core energy for accurate tabular reporting.
 
-# 1. Calculate Center of Mass
+# 1. Center of Mass
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
 
-# 2. Calculate Distance from Center
+# 2. Radial Distance
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
 run 0 post no
 
-# 3. Define Core (Inner 80% radius = 64% Volume)
+# 3. Define Core (Inner 64% Volume)
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 group core variable core_mask
 
-# 4. Calculate Core Energy
+# 4. Core Energy Calculation
 compute pe_core core reduce ave c_pe_atom
 run 0 post no
 
@@ -150,7 +159,7 @@ variable final_fmax equal fmax
 
 print " "
 print "=========================================="
-print "  SCIENTIFIC REPORT"
+print "  SCIENTIFIC REPORT (v9.0)"
 print "=========================================="
 print "Final Force Max:  ${final_fmax} eV/A"
 print "Core PE/Atom:     ${final_pe_core} eV"
