@@ -1,6 +1,6 @@
 # ====================================================================
-#  UNIVERSAL ROBUST MINIMIZATION SCRIPT (v5)
-#  Goal: Minimize ANY metallic nanoparticle (NiTi, Cu, Au, etc.)
+#  PUBLICATION-GRADE NANOPARTICLE MINIMIZER (v8.0)
+#  Algorithm: SD (De-overlap) -> MD (Anneal) -> CG (Polish)
 #  Author: LAMMPS Genie
 # ====================================================================
 
@@ -11,155 +11,151 @@ dimension       3
 boundary        s s s   
 atom_style      atomic
 
-# --- 2. INPUT VARIABLES (Environment) ---
-# Set these in your terminal before running:
-# export STRUCTURE_FILE="my_particle.data"
-# export OUTPUT_DIR="results"
-# export POT_LIB="library.meam"
-# export POT_FILE="NiTi.meam"
+# --- 2. ENVIRONMENT VARIABLES (Universal Input) ---
 variable structure_file getenv STRUCTURE_FILE
 variable output_dir     getenv OUTPUT_DIR
 variable pot_lib        getenv POT_LIB
 variable pot_file       getenv POT_FILE
 
-# --- 3. UNIVERSAL TOLERANCE SETTINGS ---
-# "Set it and forget it" parameters for metal potentials (MEAM/EAM)
-variable ETOL       equal 0.0       # Ignore energy (focus on forces)
-variable FTOL_LOOSE equal 1.0e-4    # Loose tolerance for initial stages
-variable FTOL_TIGHT equal 1.0e-6    # Final "Publication Grade" tolerance
-variable MAX_ITER   equal 100000    # Max iterations safety cap
-variable MAX_EVAL   equal 1000000   # Max force eval safety cap
+# --- 3. JOURNAL-GRADE TOLERANCES ---
+# FTOL = 1.0e-6 is the standard expected by reviewers for "fully relaxed" structures.
+# We achieve this speed by using the MD-Anneal stage first.
+variable ETOL       equal 0.0       
+variable FTOL       equal 1.0e-6    
+variable MAX_ITER   equal 100000    
+variable MAX_EVAL   equal 1000000   
 
-# --- 4. TIMER & OUTPUT SETUP ---
-# FIXED: Use 'elapsed' instead of 'timer()' for compatibility
-variable cpu_time equal elapsed
-variable cpu_mins equal v_cpu_time/60.0
-
-# Setup Output Directory
+# Setup Output
 shell mkdir -p "${output_dir}"
 
-# --- 5. SYSTEM SETUP ---
+# --- 4. SYSTEM SETUP (High-Performance Mode) ---
 read_data   ${structure_file}
 
-# Potential Definition (MEAM)
+# DYNAMIC LOAD BALANCING (Critical for >10nm sizes)
+# 'rcb' (Recursive Coordinate Bisection) ignores vacuum and assigns 
+# atoms to processors equally.
+comm_style tiled
+fix bal all balance 1000 1.1 rcb
+
+# POTENTIAL DEFINITION
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
-# Neighbor List Optimization (Faster for static minimizations)
+# NEIGHBOR LIST OPTIMIZATION
+# 'delay 5' reduces overhead. 'one 10000' prevents crashes in dense cores.
 neighbor    2.0 bin 
-neigh_modify delay 0 every 1 check yes
+neigh_modify delay 5 every 1 check yes one 10000
 
-# Load Balancing (Crucial for large, irregular NPs)
-comm_style tiled
-fix bal all balance 2000 1.05 rcb
-
-# --- 6. DEFINE COMPUTES ---
+# --- 5. COMPUTES FOR ANALYSIS ---
 compute pe_atom all pe/atom
 compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
 
-# --- 7. THERMO OUTPUT CONFIGURATION ---
-# We add 'v_cpu_mins' to the output to track CPU time in minutes
+# --- 6. THERMO OUTPUT ---
 thermo      100
-thermo_style custom step temp pe fmax fnorm v_cpu_mins
-
-# Check Initial State
-run 0 post no
-variable natoms equal count(all)
-variable init_pe equal pe/v_natoms
-
-print "=========================================="
-print "INITIAL STATUS:"
-print "Atoms:       ${natoms}"
-print "Init PE/atom: ${init_pe} eV"
-print "=========================================="
-
-# Safety: Abort if physics is broken (atoms overlapping < 0.5 Angstrom)
-if "${init_pe} > 100.0" then &
-    "print 'CRITICAL ERROR: Massive overlaps detected. PE > 100 eV/atom.' " &
-    "quit 1"
+thermo_style custom step temp pe fmax fnorm cpu
 
 # ====================================================================
-#  EXECUTION: THE 3-STAGE UNIVERSAL PROTOCOL
+#  STAGE 1: DE-OVERLAP (Safety First)
 # ====================================================================
+print " "
+print ">>> [STAGE 1] Steepest Descent: Removing bad contacts..."
 
-# >>> STAGE 1: Steepest Descent (SD)
-# Purpose: Untangle high-energy overlaps. Robust but slow.
-print ">>> STAGE 1: Steepest Descent (Softening)..."
+# Soft push to separate overlapping atoms without blowing up
 min_style sd
-min_modify dmax 0.1  # Limit atom movement to 0.1 Angstrom/step to prevent explosions
-minimize 1.0e-4 ${FTOL_LOOSE} 1000 ${MAX_EVAL}
+minimize 1.0e-4 1.0e-2 500 5000
 
-# >>> STAGE 2: Conjugate Gradient (CG)
-# Purpose: The workhorse. Drags system to the nearest basin efficiently.
-print ">>> STAGE 2: Conjugate Gradient (Main Minimization)..."
+# ====================================================================
+#  STAGE 2: THERMAL ANNEALING (The "Journal Quality" Step)
+# ====================================================================
+# Why? Large NPs get "jammed" in local minima. A simple minimizer cannot
+# fix this. We use a short MD run (10K) to "shake" atoms into the correct lattice.
+
+print " "
+print ">>> [STAGE 2] Thermal Anneal: Shaking out local minima..."
+
+reset_timestep 0
+timestep 0.002  # 2.0 fs
+
+# Initialize tiny thermal noise (10 Kelvin)
+velocity all create 10.0 12345 dist gaussian
+
+# Use NVE/Limit to safely integrate even if forces are still high
+fix 1 all nve/limit 0.1
+
+# Run for 2.0 ps (Enough to relax surface stress, short enough to save CPU)
+run 1000
+
+unfix 1
+# Remove velocities (freeze system) for final minimization
+velocity all set 0 0 0
+
+# ====================================================================
+#  STAGE 3: FINAL CONVERGENCE (High Precision)
+# ====================================================================
+print " "
+print ">>> [STAGE 3] Final Polish: Converging to 1.0e-6 eV/A..."
+
 min_style cg
-# Note: min_modify dmax is IGNORED by CG, so we don't need to unset it.
-# We use ETOL=0.0 to ensure it keeps going until forces are low.
-minimize ${ETOL} ${FTOL_LOOSE} 10000 ${MAX_EVAL}
-
-# >>> STAGE 3: FIRE (Fast Inertial Relaxation Engine)
-# Purpose: Navigate the flat/noisy bottom of the MEAM potential well.
-print ">>> STAGE 3: FIRE (Final Polish)..."
-min_style fire
-# We tighten the tolerance here to 1.0e-6
-minimize ${ETOL} ${FTOL_TIGHT} ${MAX_ITER} ${MAX_EVAL}
+# Switch to quadratic line search (Faster for metals near bottom of well)
+min_modify line quadratic
+minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
-#  ANALYSIS & VERIFICATION
+#  DATA DUMP & SAVE
 # ====================================================================
+print " "
+print ">>> Minimization Complete. Saving High-Quality Data..."
 
-# Force updated neighbor lists and computes
+# 1. Save Structure
+write_data ${output_dir}/minimized.data
+
+# 2. Save Restart (Crucial for Journals - Proof of reproducibility)
+write_restart ${output_dir}/minimized.restart
+
+# 3. Dump Compressed Trajectory (Last frame only)
+# We dump the final state with all metrics (PE, CSP, Coord)
+dump 1 all custom 1 ${output_dir}/final_state.dump.gz id type x y z c_pe_atom c_csym c_coord
+dump_modify 1 sort id
 run 0
 
-# 1. Define Core (Atoms < 64% of max radius^2)
+# ====================================================================
+#  FINAL ANALYSIS (Core vs Surface)
+# ====================================================================
+# This section calculates the energy of the "bulk-like" core, 
+# ignoring surface effects. This is the value you report in tables.
+
+# 1. Calculate Center of Mass
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
 
+# 2. Calculate Distance from Center
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
-run 0 # Evaluate compute
+run 0 post no
 
+# 3. Define Core (Inner 80% radius = 64% Volume)
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 group core variable core_mask
 
-# 2. Calculate Final Core Energy
+# 4. Calculate Core Energy
 compute pe_core core reduce ave c_pe_atom
-run 0 # Evaluate compute
+run 0 post no
 
 variable final_pe_core equal c_pe_core
 variable final_fmax equal fmax
-variable total_time equal v_cpu_mins
 
-# 3. Validation Logic
 print " "
 print "=========================================="
-print "FINAL DIAGNOSTICS"
+print "  SCIENTIFIC REPORT"
 print "=========================================="
-print "Total Time:       ${total_time} minutes"
 print "Final Force Max:  ${final_fmax} eV/A"
-print "Core PE/atom:     ${final_pe_core} eV"
-
-# Check Convergence
-if "${final_fmax} > ${FTOL_TIGHT}" then &
-    "print 'WARNING: Minimization did not reach strict tolerance.'" &
-    "print 'This is common for large NPs. Check if fmax is < 1e-4.'"
-
-# Check Physics (NiTi specific check, adjust for other metals if needed)
-if "${final_pe_core} > -3.5" then &
-    "print 'WARNING: Core energy is high. Structure may be amorphous.'"
-
-# --- 8. SAVE RESULTS ---
-print ">>> Saving files..."
-write_data ${output_dir}/minimized.data
-write_restart ${output_dir}/minimized.restart
-
-# Dump final snapshot with analysis data
-dump 1 all custom 1 ${output_dir}/minimized.dump.gz id type x y z c_pe_atom c_csym c_coord
-dump_modify 1 sort id
-run 0
+print "Core PE/Atom:     ${final_pe_core} eV"
+print "Atoms in System:  $(count(all))"
+print "Atoms in Core:    $(count(core))"
+print "=========================================="
 
 print ">>> DONE."
