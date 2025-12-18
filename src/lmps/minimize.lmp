@@ -1,5 +1,5 @@
 # ====================================================================
-#  EMERGENCY SCRIPT v9.2 - "THE FIX"
+#  EMERGENCY SCRIPT v9.3 - DISPLAY FIXED
 # ====================================================================
 
 # --- 1. INITIALIZATION ---
@@ -17,21 +17,19 @@ variable pot_file       getenv POT_FILE
 
 # --- 3. ADJUSTED TOLERANCES ---
 variable ETOL       equal 0.0        
-variable FTOL       equal 1.0e-5    # Relaxed to 1e-5 for MEAM noise floor
-variable MAX_ITER   equal 50000     # Reduced from 100k to ensure finish
+variable FTOL       equal 1.0e-5    # Relaxed to 1e-5 for MEAM
+variable MAX_ITER   equal 50000     # 50k Limit
 variable MAX_EVAL   equal 500000    
 
 shell mkdir -p "${output_dir}"
 
 # --- 4. TIME IN HOURS SETUP ---
-# Create a variable to convert CPU seconds to Hours
 variable cpu_hr equal cpu/3600.0
 
-# --- 5. SYSTEM SETUP (RESTART LOGIC) ---
-# NOTE: If you have a restart file from the failed run, uncomment the next line:
-# read_restart   ${output_dir}/minimized.restart
-# ...and comment out the 'read_data' line below.
-
+# --- 5. SYSTEM SETUP ---
+# UNCOMMENT IF RESTARTING: 
+# read_restart ${output_dir}/minimized.restart
+# COMMENT OUT NEXT LINE IF RESTARTING:
 read_data       ${structure_file}
 
 # Load Balancing
@@ -51,20 +49,20 @@ compute pe_atom all pe/atom
 compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
 
-# --- 6. THERMO OUTPUT (WITH HOURS) ---
+# --- 6. GLOBAL OUTPUT SETTINGS ---
 thermo      100
-# NOW REPORTING TIME IN HOURS (v_cpu_hr)
-thermo_style custom step temp pe fmax fnorm v_cpu_hr
 
 # ====================================================================
 #  STAGE 1: DE-OVERLAP (SD)
 # ====================================================================
 print " "
 print ">>> [STAGE 1] Steepest Descent..."
+
+# Set style BEFORE run
+thermo_style custom step temp pe fmax fnorm v_cpu_hr
+
 min_style sd
 minimize 1.0e-4 1.0e-2 1000 10000
-
-# SAFETY CHECKPOINT 1
 write_restart ${output_dir}/stage1_sd.restart
 
 # ====================================================================
@@ -72,15 +70,17 @@ write_restart ${output_dir}/stage1_sd.restart
 # ====================================================================
 print " "
 print ">>> [STAGE 2] Thermal Anneal..."
+
 reset_timestep 0
+# RE-APPLY STYLE AFTER RESET so it stays in HOURS
+thermo_style custom step temp pe fmax fnorm v_cpu_hr
+
 timestep 0.002 
 velocity all create 10.0 12345 dist gaussian
 fix 1 all nve/limit 0.1
 run 1000
 unfix 1
 velocity all set 0 0 0
-
-# SAFETY CHECKPOINT 2
 write_restart ${output_dir}/stage2_anneal.restart
 
 # ====================================================================
@@ -88,12 +88,9 @@ write_restart ${output_dir}/stage2_anneal.restart
 # ====================================================================
 print " "
 print ">>> [STAGE 3] FIRE Descent..."
+
 min_style fire
-
-# Stop early at 0.05 to prevent oscillation/waste
 minimize ${ETOL} 5.0e-2 ${MAX_ITER} ${MAX_EVAL}
-
-# SAFETY CHECKPOINT 3 (Most Important)
 write_restart ${output_dir}/stage3_fire.restart
 
 # ====================================================================
@@ -102,13 +99,13 @@ write_restart ${output_dir}/stage3_fire.restart
 print " "
 print ">>> [STAGE 4] CG Polish: Final Convergence..."
 
-# 1. Switch to Conjugate Gradient (Robust)
+# 1. Switch to Conjugate Gradient
 min_style cg
 
 # 2. FORCE QUADRATIC LINE SEARCH (Crucial for MEAM noise)
 min_modify line quadratic dmax 0.05
 
-# 3. Run with reduced Iterations (50k) and Tolerance (1e-5)
+# 3. Run with reduced Iterations
 minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
@@ -145,7 +142,7 @@ variable total_hrs equal v_cpu_hr
 
 print " "
 print "=========================================="
-print "  SCIENTIFIC REPORT (v9.2)"
+print "  SCIENTIFIC REPORT (v9.3)"
 print "=========================================="
 print "Final Force Max:  ${final_fmax} eV/A"
 print "Core PE/Atom:     $(c_pe_core) eV"
