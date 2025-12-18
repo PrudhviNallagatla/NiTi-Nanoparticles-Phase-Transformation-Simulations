@@ -85,36 +85,29 @@ unfix 1
 velocity all set 0 0 0
 
 # ====================================================================
-#  STAGE 3: INERTIAL RELAXATION (FIRE)
+#  STAGE 3: INERTIAL RELAXATION (FIRE) - OPTIMIZED
 # ====================================================================
-# Purpose: Rapidly descend into the harmonic basin.
-# FIRE is robust against the "roughness" of MEAM/EAM potentials.
-
 print " "
 print ">>> [STAGE 3] FIRE Minimization: Rapid Descent..."
-
-# FIRE requires a defined timestep (inherited from above: 0.002)
 min_style fire
 
-# Optional: Limit the maximum step size FIRE can take (safety)
-min_modify dmax 0.1 
-
-# We relax to a "good" tolerance (1e-4), but leave "perfect" for CG
-minimize ${ETOL} 1.0e-4 ${MAX_ITER} ${MAX_EVAL}
+# OPTIMIZATION: Stop FIRE when Fmax hits 1.0e-3 (0.001). 
+# Your log shows you are already at ~0.003, so this will finish quickly.
+# Don't ask FIRE for 1.0e-4 or 1.0e-6.
+minimize ${ETOL} 1.0e-3 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
-#  STAGE 4: FINAL CONVERGENCE (Optimized & Safe)
+#  STAGE 4: FINAL CONVERGENCE (HFTN)
 # ====================================================================
 print " "
-print ">>> [STAGE 4] HFTN Polish: Converging to 1.0e-5 eV/A..."
+print ">>> [STAGE 4] HFTN Polish: Precision Convergence..."
 
-min_style hftn
+# Switch to HFTN. It calculates the "curvature" of the well.
+# It will snap to the bottom much faster than FIRE or CG.
+min_style hftn 
 
-# SAFETY OPTIMIZATION:
-# Restrict the optimizer from moving any atom more than 0.2 A in one step.
-# This prevents "explosions" if the Hessian calculation hits a singularity.
-min_modify dmax 0.2 
-
+# Now we ask for the high precision (1.0e-5 or 1.0e-6)
+minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
 minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================

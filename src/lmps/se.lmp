@@ -208,8 +208,8 @@ variable ramp_safe_load  equal (step>(v_start_step_load+${load_steps}))?1.0:v_ra
 variable pos_hi_load     equal v_z_hi0-(v_Lz_ref*${strain_max}*0.5*v_ramp_safe_load)
 variable pos_lo_load     equal v_z_lo0+(v_Lz_ref*${strain_max}*0.5*v_ramp_safe_load)
 
-fix wall_hi all wall/harmonic zhi v_pos_hi_load 100.0 0.0 2.5 units box
-fix wall_lo all wall/harmonic zlo v_pos_lo_load 100.0 0.0 2.5 units box
+fix wall_hi all wall/harmonic zhi v_pos_hi_load 1000.0 0.0 2.5 units box
+fix wall_lo all wall/harmonic zlo v_pos_lo_load 1000.0 0.0 2.5 units box
 
 run ${end1} upto
 unfix wall_hi

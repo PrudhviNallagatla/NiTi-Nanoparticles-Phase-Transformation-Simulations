@@ -23,10 +23,13 @@ shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
 
 # --- Physics Parameters ---
-variable T_low     equal 200.0
-variable T_high    equal 500.0
-variable T_rate    equal 0.1      # K/ps
-variable tdamp     equal 0.1      # 100*dt 
+variable T_low      equal 200.0
+variable T_high     equal 500.0
+variable T_rate     equal 0.35      
+
+# OPTIMIZED DAMPING: Standard is 100*dt = 0.2 ps
+# 0.1 is a bit tight; 0.2 allows natural phase fluctuations.
+variable tdamp      equal 0.2
 
 # --- Timing ---
 timestep     0.002

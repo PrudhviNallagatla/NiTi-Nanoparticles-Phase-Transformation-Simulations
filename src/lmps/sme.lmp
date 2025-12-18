@@ -226,8 +226,8 @@ variable pos_lo     equal v_z_lo0+(${Lz_ref}*${strain_max}*0.5*v_ramp_safe)
 
 print ">>> STAGE 2: Loading (Compression)"
 fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}
-fix wall_hi all wall/harmonic zhi v_pos_hi 100.0 0.0 2.5 units box
-fix wall_lo all wall/harmonic zlo v_pos_lo 100.0 0.0 2.5 units box
+fix wall_hi all wall/harmonic zhi v_pos_hi 1000.0 0.0 2.5 units box
+fix wall_lo all wall/harmonic zlo v_pos_lo 1000.0 0.0 2.5 units box
 run ${end2} upto
 unfix wall_hi
 unfix wall_lo
