@@ -108,7 +108,6 @@ min_style hftn
 
 # Now we ask for the high precision (1.0e-5 or 1.0e-6)
 minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
-minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
 #  DATA DUMP & SAVE
