@@ -85,16 +85,15 @@ unfix 1
 velocity all set 0 0 0
 
 # ====================================================================
-#  STAGE 3: INERTIAL RELAXATION (FIRE) - OPTIMIZED
+#  STAGE 3: INERTIAL RELAXATION (FIRE) - OPTIMIZED HANDOFF
 # ====================================================================
 print " "
 print ">>> [STAGE 3] FIRE Minimization: Rapid Descent..."
 min_style fire
 
-# OPTIMIZATION: Stop FIRE when Fmax hits 1.0e-3 (0.001). 
-# Your log shows you are already at ~0.003, so this will finish quickly.
-# Don't ask FIRE for 1.0e-4 or 1.0e-6.
-minimize ${ETOL} 1.0e-3 ${MAX_ITER} ${MAX_EVAL}
+# CHANGE: Relaxed tolerance from 1.0e-3 to 5.0e-2 (0.05)
+# Rationale: FIRE is oscillating. We cut it off early and let HFTN finish.
+minimize ${ETOL} 5.0e-2 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
 #  STAGE 4: FINAL CONVERGENCE (HFTN)
@@ -102,12 +101,12 @@ minimize ${ETOL} 1.0e-3 ${MAX_ITER} ${MAX_EVAL}
 print " "
 print ">>> [STAGE 4] HFTN Polish: Precision Convergence..."
 
-# Switch to HFTN. It calculates the "curvature" of the well.
-# It will snap to the bottom much faster than FIRE or CG.
+# Switch to HFTN (uses curvature info to stop oscillation)
 min_style hftn 
 
-# Now we ask for the high precision (1.0e-5 or 1.0e-6)
-minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
+# Now we ask for the "Golden Standard" precision (1.0e-6)
+# HFTN handles this last mile much faster than FIRE.
+minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
 #  DATA DUMP & SAVE
