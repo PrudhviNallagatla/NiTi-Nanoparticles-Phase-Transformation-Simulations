@@ -1,6 +1,6 @@
 # filepath: /home/rimuru/workspace/src/lmps/thermal_cycle.lmp
-# GOAL: Journal-Quality Thermal Hysteresis (Linear Execution / No Logic Crashes)
-# REVISION: v6 (Removed IFs, implemented 'run upto')
+# GOAL: Journal-Quality Thermal Hysteresis (Linear Execution / Robust Restart)
+# REVISION: v7 (Fixed Comm Order, Safe Velocity Init)
 
 clear
 units       metal
@@ -8,17 +8,20 @@ dimension   3
 boundary    s s s   
 atom_style  atomic
 
+# --- CRITICAL: Comm Style must be defined BEFORE reading data ---
+# Load Balancing (Tiled communication is required for 'fix balance rcb')
+comm_style  tiled
+
 # ==========================================================================
 # 1. ENVIRONMENT & VARIABLES
 # ==========================================================================
-variable input_data    getenv INPUT_DATA
 variable output_dir    getenv OUTPUT_DIR
 variable restart_dir   getenv RESTART_DIR
 variable pot_lib       getenv POT_LIB
 variable pot_file      getenv POT_FILE
 variable seed          getenv SEED
 
-# Create directories (Shell command is safe here)
+# Create directories
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
 
@@ -27,19 +30,22 @@ variable T_low      equal 200.0
 variable T_high     equal 500.0
 variable T_rate     equal 0.35      
 
-# OPTIMIZED DAMPING: Standard is 100*dt = 0.2 ps
-# 0.1 is a bit tight; 0.2 allows natural phase fluctuations.
+# Damping: 0.2 ps is safe for phase transitions
 variable tdamp      equal 0.2
 
 # --- Timing ---
 timestep     0.002
+# Define dt explicitly for variable math to be safe, though usually auto-detected
+variable     dt_val      equal 0.002 
 variable     delta_T     equal (v_T_high-v_T_low)
+
 # Calculate steps needed for ramp
-variable     run_ramp    equal round(v_delta_T/v_T_rate/dt)
+# Note: We use floor/round to ensure integer steps
+variable     run_ramp    equal round(v_delta_T/v_T_rate/v_dt_val)
 variable     run_hold    equal 50000
 
 # --- Milestone Steps (Absolute Time) ---
-# We define the EXACT step number where each stage should end.
+# This enables the "run upto" logic.
 variable     end_stage0  equal v_run_hold
 variable     end_stage1  equal v_end_stage0+v_run_ramp
 variable     end_stage2  equal v_end_stage1+v_run_hold
@@ -49,18 +55,9 @@ variable     end_stage4  equal v_end_stage3+v_run_hold
 # ==========================================================================
 # 2. SETUP (The Crash-Proof Start)
 # ==========================================================================
-# CRITICAL FIX: Instead of checking "if restart == none", we let the 
-# shell script determine the start command. 
-# PASS "read_data ..." OR "read_restart ..." as the environment variable 'START_CMD'
-# If you cannot change the shell script, uncomment the manual fallback below.
-
+# PASS "read_data xxx" OR "read_restart xxx" via env variable 'START_CMD'
 variable start_cmd getenv START_CMD
 ${start_cmd} 
-
-# --- Fallback (If you strictly need the old variable logic without crashing) ---
-# To use this, comment out the ${start_cmd} line above.
-# variable restart_file getenv RESTART_FILE
-# if "${restart_file} == none" then "read_data ${input_data}" else "read_restart ${restart_file}"
 
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
@@ -68,15 +65,13 @@ pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 neighbor    2.0 bin
 neigh_modify delay 10 every 1 check yes
 
-# Load Balancing
-comm_style tiled
+# Load Balancing (Now safe because comm_style was set at top)
 fix bal all balance 5000 1.05 rcb
 
 # ==========================================================================
-# 3. COMPUTATIONS (Optimized)
+# 3. COMPUTATIONS 
 # ==========================================================================
-# --- A. Time & Cost ---
-# FIXED: Use 'equal' instead of 'internal' for compatibility
+# --- A. Time ---
 variable t_elapsed equal elapsed
 variable cpu_hours equal v_t_elapsed/3600.0
 
@@ -85,6 +80,7 @@ compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
+# Use center of mass reference for stability
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
 variable rcut_sq equal 0.64*c_r2max
@@ -100,20 +96,20 @@ compute pe_all all pe/atom
 compute ack    all ackland/atom
 
 # Phase Fraction (Austenite = BCC(3))
+# Added 1.0e-20 to denominator to prevent divide-by-zero on step 0 if group is empty
 variable is_aus atom "c_ack == 3"
 compute n_aus core reduce sum v_is_aus
 variable n_core equal count(core)
-variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-6)"
+variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-20)"
 
 # --- D. Stress & Enthalpy ---
 compute st all stress/atom NULL
 variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
 compute Szz all reduce sum c_st[3]
+# Convert bar*A^3 -> GPa (1 bar = 1e-4 GPa)
 variable SigmaZZ_GPa equal -(c_Szz/v_Vol_total)*1.0e-4
 
-compute H_all all reduce sum c_pe_all
-# Note: For H, we usually neglect KE in solids at constant T, 
-# but (PE+KE) is safer if T changes. Adding KE:
+# Enthalpy (PE + KE) per atom
 compute ke_all all ke/atom
 compute H_total_compute all reduce sum c_pe_all c_ke_all
 variable H_total_eV equal c_H_total_compute[1]+c_H_total_compute[2]
@@ -129,43 +125,42 @@ compute disp_rms all reduce ave v_disp_mag
 thermo 1000
 thermo_style custom step v_cpu_hours temp c_T_core v_frac_aus v_SigmaZZ_GPa
 
+# "append yes" ensures we don't wipe data on restart
 fix data_out all print 1000 &
 "$(step) $(v_cpu_hours) $(temp) $(c_T_core) $(v_H_total_eV) $(v_SigmaZZ_GPa) $(v_frac_aus) $(c_disp_rms)" &
 file ${output_dir}/hysteresis_full.txt append yes screen no &
 title "# Step CPU_Hrs T_Global T_Core H_Total(eV) SigmaZZ(GPa) Frac_Aus Disp_RMS(A)"
 
-# Note: We delay the dump slightly to avoid overwriting on restart
 dump 1 all custom 5000 ${output_dir}/dump.cycle.*.gz &
     id type x y z c_pe_all c_ack c_st[1] c_st[2] c_st[3] c_disp[1] c_disp[2] c_disp[3]
 dump_modify 1 sort id element Ni Ti
 
+# Save restart files with two alternating names to save space but ensure safety
 restart 10000 ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
 # ==========================================================================
-# 5. EXECUTION FLOW (Linear & Robust)
+# 5. EXECUTION FLOW
 # ==========================================================================
-
-# Initialize velocities only if step is 0 (First Run)
-# This is safe because 'velocity' is forbidden after a restart anyway unless 'create' is used.
-# But we can't wrap it in IF. 
-# SOLUTION: We assume input_data has no velocities, and restart does.
-# If starting from data file, we act:
-velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian
-
-fix mom all momentum 100 linear 1 1 1 angular
 
 print ">>> STARTING THERMAL CYCLE"
 
+# --- INITIALIZATION (Conditional) ---
+# CRITICAL FIX: Only create velocities if we are at step 0.
+# If we are restarting (step > 0), we MUST preserve the existing velocities.
+if "$(step) == 0" then &
+  "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
+
+fix mom all momentum 100 linear 1 1 1 angular
+
 # --- STAGE 0: EQUILIBRATE (500K) ---
-# Target: 50,000 steps
 print ">>> STAGE 0: Equilibrate Austenite"
 fix 1 all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${end_stage0} upto
 unfix 1
+# Explicit restart points for post-mortem analysis
 write_restart ${restart_dir}/restart.stage0_end
 
 # --- STAGE 1: COOLING (500K -> 200K) ---
-# Target: 50k -> 200k steps (approx)
 print ">>> STAGE 1: Cooling (A->M)"
 fix 1 all nvt temp ${T_high} ${T_low} ${tdamp}
 run ${end_stage1} upto
