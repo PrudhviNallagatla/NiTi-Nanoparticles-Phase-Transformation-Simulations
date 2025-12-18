@@ -103,17 +103,19 @@ min_modify dmax 0.1
 minimize ${ETOL} 1.0e-4 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
-#  STAGE 4: FINAL CONVERGENCE (Conjugate Gradient)
+#  STAGE 4: FINAL CONVERGENCE (Optimized & Safe)
 # ====================================================================
-# Purpose: Mathematical precision. Polak-Ribiere is most efficient
-# once we are already inside the harmonic well (thanks to FIRE).
-
 print " "
-print ">>> [STAGE 4] CG Polish: Converging to ${FTOL} eV/A..."
+print ">>> [STAGE 4] HFTN Polish: Converging to 1.0e-5 eV/A..."
 
-min_style cg
-min_modify line quadratic
-minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
+min_style hftn
+
+# SAFETY OPTIMIZATION:
+# Restrict the optimizer from moving any atom more than 0.2 A in one step.
+# This prevents "explosions" if the Hessian calculation hits a singularity.
+min_modify dmax 0.2 
+
+minimize ${ETOL} 1.0e-5 ${MAX_ITER} ${MAX_EVAL}
 
 # ====================================================================
 #  DATA DUMP & SAVE
