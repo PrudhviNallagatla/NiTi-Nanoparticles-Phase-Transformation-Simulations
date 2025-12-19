@@ -1,5 +1,5 @@
 # ====================================================================
-#  EMERGENCY SCRIPT v9.6 - "AUTO-RESUME & SMART SKIP"
+#  EMERGENCY SCRIPT v9.7 - "COMPUTE FIX"
 # ====================================================================
 
 # --- 1. INITIALIZATION ---
@@ -29,20 +29,18 @@ variable cpu_hr equal cpu/3600.0
 # ====================================================================
 #  5. SYSTEM SETUP - MANUAL TOGGLE
 # ====================================================================
-# I have pre-set this to RESUME from your Stage 3 file.
-# If you ever want to start over, swap the comments.
 
 # [OPTION A: RESUME] (Active)
 print ">>> MODE: Resuming from Stage 3 checkpoint..."
 read_restart    ${output_dir}/stage3_fire.restart
-# Important: We must jump OVER stages 1 & 2 because the file is already there.
+# Jump immediately to logic
 jump SELF skip_to_stage3_logic
 
 # [OPTION B: START FRESH] (Commented Out)
 # print ">>> MODE: Starting from scratch..."
 # read_data       ${structure_file}
 
-# --- POTENTIAL SETUP (Required after Read_Restart) ---
+# --- POTENTIAL SETUP ---
 # Load Balancing
 comm_style tiled
 fix bal all balance 1000 1.1 rcb
@@ -53,6 +51,7 @@ pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 neighbor    2.0 bin 
 neigh_modify delay 5 every 1 check yes one 10000
 
+# THESE ARE DEFINED HERE FOR FRESH RUNS
 compute pe_atom all pe/atom
 compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
@@ -67,8 +66,6 @@ print " "
 print ">>> [STAGE 1] Steepest Descent..."
 min_style sd
 minimize 1.0e-4 1.0e-2 1000 10000
-
-# SAVE CHECKPOINT 1
 write_data    ${output_dir}/stage1_sd.data
 write_restart ${output_dir}/stage1_sd.restart
 
@@ -79,15 +76,12 @@ print " "
 print ">>> [STAGE 2] Thermal Anneal..."
 reset_timestep 0
 thermo_style custom step temp pe fmax fnorm v_cpu_hr
-
 timestep 0.002 
 velocity all create 10.0 12345 dist gaussian
 fix 1 all nve/limit 0.1
 run 1000
 unfix 1
 velocity all set 0 0 0
-
-# SAVE CHECKPOINT 2
 write_data    ${output_dir}/stage2_anneal.data
 write_restart ${output_dir}/stage2_anneal.restart
 
@@ -98,18 +92,15 @@ print " "
 print ">>> [STAGE 3] FIRE Descent..."
 min_style fire
 minimize ${ETOL} 5.0e-2 ${MAX_ITER} ${MAX_EVAL}
-
-# SAVE CHECKPOINT 3
 write_data    ${output_dir}/stage3_fire.data
 write_restart ${output_dir}/stage3_fire.restart
 
 # ====================================================================
-#  SMART LOGIC: CHECK IF WE ARE DONE
+#  SMART LOGIC CHECKPOINT
 # ====================================================================
-# This label catches the jump from the top of the script
 label skip_to_stage3_logic
 
-# 1. Re-define Potential (Safety measure if jumped)
+# 1. Re-define Potential (Required if we jumped here)
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
@@ -118,7 +109,7 @@ variable cur_fmax equal fmax
 print " "
 print ">>> CURRENT FORCE MAX: ${cur_fmax} eV/A"
 
-# 3. The Decision: If Force < 0.05, we are done. Skip Stage 4.
+# 3. Decision
 if "${cur_fmax} < 0.05" then &
   "print '>>> STATUS: Converged! Skipping Stage 4.'" &
   "jump SELF save_data" &
@@ -135,7 +126,6 @@ min_style cg
 min_modify line quadratic dmax 0.05
 minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
 
-# SAVE CHECKPOINT 4
 write_data    ${output_dir}/stage4_cg.data
 write_restart ${output_dir}/stage4_cg.restart
 
@@ -147,9 +137,16 @@ label save_data
 print " "
 print ">>> DONE. Generating Final Report..."
 
-write_data ${output_dir}/final_minimized.data
-write_restart ${output_dir}/final.restart
+# --- THE FIX: We must re-define these here for the dump to work ---
+compute pe_atom all pe/atom
+compute csym    all centro/atom bcc
+compute coord   all coord/atom cutoff 3.5
 
+# Save Files
+write_data      ${output_dir}/final_minimized.data
+write_restart   ${output_dir}/final.restart
+
+# Dump using the computes we just defined
 dump 1 all custom 1 ${output_dir}/final_state.dump.gz id type x y z c_pe_atom c_csym c_coord
 dump_modify 1 sort id
 run 0
@@ -164,6 +161,7 @@ variable zcm equal c_com[3]
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
 run 0 post no
+
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 group core variable core_mask
@@ -175,7 +173,7 @@ variable total_hrs equal v_cpu_hr
 
 print " "
 print "=========================================="
-print "  SCIENTIFIC REPORT (v9.6)"
+print "  SCIENTIFIC REPORT (v9.7)"
 print "=========================================="
 print "Final Force Max:  ${final_fmax} eV/A"
 print "Core PE/Atom:     $(c_pe_core) eV"
