@@ -1,5 +1,5 @@
 # ====================================================================
-#  EMERGENCY SCRIPT v9.3 - DISPLAY FIXED
+#  EMERGENCY SCRIPT v9.6 - "AUTO-RESUME & SMART SKIP"
 # ====================================================================
 
 # --- 1. INITIALIZATION ---
@@ -17,8 +17,8 @@ variable pot_file       getenv POT_FILE
 
 # --- 3. ADJUSTED TOLERANCES ---
 variable ETOL       equal 0.0        
-variable FTOL       equal 1.0e-5    # Relaxed to 1e-5 for MEAM
-variable MAX_ITER   equal 50000     # 50k Limit
+variable FTOL       equal 1.0e-5    
+variable MAX_ITER   equal 50000     
 variable MAX_EVAL   equal 500000    
 
 shell mkdir -p "${output_dir}"
@@ -26,43 +26,50 @@ shell mkdir -p "${output_dir}"
 # --- 4. TIME IN HOURS SETUP ---
 variable cpu_hr equal cpu/3600.0
 
-# --- 5. SYSTEM SETUP ---
-# UNCOMMENT IF RESTARTING: 
-# read_restart ${output_dir}/minimized.restart
-# COMMENT OUT NEXT LINE IF RESTARTING:
-read_data       ${structure_file}
+# ====================================================================
+#  5. SYSTEM SETUP - MANUAL TOGGLE
+# ====================================================================
+# I have pre-set this to RESUME from your Stage 3 file.
+# If you ever want to start over, swap the comments.
 
+# [OPTION A: RESUME] (Active)
+print ">>> MODE: Resuming from Stage 3 checkpoint..."
+read_restart    ${output_dir}/stage3_fire.restart
+# Important: We must jump OVER stages 1 & 2 because the file is already there.
+jump SELF skip_to_stage3_logic
+
+# [OPTION B: START FRESH] (Commented Out)
+# print ">>> MODE: Starting from scratch..."
+# read_data       ${structure_file}
+
+# --- POTENTIAL SETUP (Required after Read_Restart) ---
 # Load Balancing
 comm_style tiled
 fix bal all balance 1000 1.1 rcb
 
-# Potential
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
-# Neighbor
 neighbor    2.0 bin 
 neigh_modify delay 5 every 1 check yes one 10000
 
-# Computes
 compute pe_atom all pe/atom
 compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
 
-# --- 6. GLOBAL OUTPUT SETTINGS ---
 thermo      100
+thermo_style custom step temp pe fmax fnorm v_cpu_hr
 
 # ====================================================================
 #  STAGE 1: DE-OVERLAP (SD)
 # ====================================================================
 print " "
 print ">>> [STAGE 1] Steepest Descent..."
-
-# Set style BEFORE run
-thermo_style custom step temp pe fmax fnorm v_cpu_hr
-
 min_style sd
 minimize 1.0e-4 1.0e-2 1000 10000
+
+# SAVE CHECKPOINT 1
+write_data    ${output_dir}/stage1_sd.data
 write_restart ${output_dir}/stage1_sd.restart
 
 # ====================================================================
@@ -70,9 +77,7 @@ write_restart ${output_dir}/stage1_sd.restart
 # ====================================================================
 print " "
 print ">>> [STAGE 2] Thermal Anneal..."
-
 reset_timestep 0
-# RE-APPLY STYLE AFTER RESET so it stays in HOURS
 thermo_style custom step temp pe fmax fnorm v_cpu_hr
 
 timestep 0.002 
@@ -81,6 +86,9 @@ fix 1 all nve/limit 0.1
 run 1000
 unfix 1
 velocity all set 0 0 0
+
+# SAVE CHECKPOINT 2
+write_data    ${output_dir}/stage2_anneal.data
 write_restart ${output_dir}/stage2_anneal.restart
 
 # ====================================================================
@@ -88,31 +96,56 @@ write_restart ${output_dir}/stage2_anneal.restart
 # ====================================================================
 print " "
 print ">>> [STAGE 3] FIRE Descent..."
-
 min_style fire
 minimize ${ETOL} 5.0e-2 ${MAX_ITER} ${MAX_EVAL}
+
+# SAVE CHECKPOINT 3
+write_data    ${output_dir}/stage3_fire.data
 write_restart ${output_dir}/stage3_fire.restart
 
 # ====================================================================
-#  STAGE 4: CG POLISH (The Fix)
+#  SMART LOGIC: CHECK IF WE ARE DONE
+# ====================================================================
+# This label catches the jump from the top of the script
+label skip_to_stage3_logic
+
+# 1. Re-define Potential (Safety measure if jumped)
+pair_style  meam
+pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
+
+# 2. Check Force
+variable cur_fmax equal fmax
+print " "
+print ">>> CURRENT FORCE MAX: ${cur_fmax} eV/A"
+
+# 3. The Decision: If Force < 0.05, we are done. Skip Stage 4.
+if "${cur_fmax} < 0.05" then &
+  "print '>>> STATUS: Converged! Skipping Stage 4.'" &
+  "jump SELF save_data" &
+else &
+  "print '>>> STATUS: Force still high. Proceeding to Stage 4 Polish.'"
+
+# ====================================================================
+#  STAGE 4: CG POLISH (Only runs if needed)
 # ====================================================================
 print " "
-print ">>> [STAGE 4] CG Polish: Final Convergence..."
+print ">>> [STAGE 4] CG Polish..."
 
-# 1. Switch to Conjugate Gradient
 min_style cg
-
-# 2. FORCE QUADRATIC LINE SEARCH (Crucial for MEAM noise)
 min_modify line quadratic dmax 0.05
-
-# 3. Run with reduced Iterations
 minimize ${ETOL} ${FTOL} ${MAX_ITER} ${MAX_EVAL}
+
+# SAVE CHECKPOINT 4
+write_data    ${output_dir}/stage4_cg.data
+write_restart ${output_dir}/stage4_cg.restart
 
 # ====================================================================
 #  FINAL DATA SAVE
 # ====================================================================
+label save_data
+
 print " "
-print ">>> DONE. Saving Data..."
+print ">>> DONE. Generating Final Report..."
 
 write_data ${output_dir}/final_minimized.data
 write_restart ${output_dir}/final.restart
@@ -142,7 +175,7 @@ variable total_hrs equal v_cpu_hr
 
 print " "
 print "=========================================="
-print "  SCIENTIFIC REPORT (v9.3)"
+print "  SCIENTIFIC REPORT (v9.6)"
 print "=========================================="
 print "Final Force Max:  ${final_fmax} eV/A"
 print "Core PE/Atom:     $(c_pe_core) eV"
