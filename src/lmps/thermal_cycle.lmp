@@ -55,9 +55,9 @@ variable     end_stage4  equal v_end_stage3+v_run_hold
 # ==========================================================================
 # 2. SETUP (The Crash-Proof Start)
 # ==========================================================================
-# Auto-detect restart files
-variable restart_exists file ${restart_dir}/restart.rolling.1
-if "${restart_exists} == 1" then &
+# Auto-detect restart files (CORRECT)
+variable restart_exists equal is_file("${restart_dir}/restart.rolling.1")
+if "${restart_exists} > 0" then &
   "print '>>> RESUMING from restart file'" &
   "read_restart ${restart_dir}/restart.rolling.1" &
 else &
@@ -77,11 +77,10 @@ fix bal all balance 5000 1.05 rcb
 # ==========================================================================
 # 3. COMPUTATIONS 
 # ==========================================================================
-# --- A. Time (Wall vs CPU) ---
-variable t_wall_sec equal elapsed
+# --- A. Wall time ---
+# CPU time in seconds (LAMMPS-reported). Convert to hours for reporting.
+variable t_wall_sec equal cpu
 variable t_wall_hr  equal v_t_wall_sec/3600.0
-
-# (optional) keep CPU vars if you want them, but not needed for "how long did it run"
 
 # --- B. Core vs Surface ---
 compute com all com
@@ -95,11 +94,17 @@ variable rcut_sq equal 0.64*c_r2max
 variable core_mask   atom "v_rsq < v_rcut_sq"
 variable surface_mask atom "v_rsq >= v_rcut_sq"
 
-# FIX: Force initial group evaluation
+# FIX: Force initial group evaluation (avoid "no time integration" warnings)
+fix __tmp_int all nve
 run 0 post no
+unfix __tmp_int
+
 group core    dynamic all var core_mask    every 5000
 group surface dynamic all var surface_mask every 5000
+
+fix __tmp_int all nve
 run 0 post no
+unfix __tmp_int
 
 # --- C. Phase Transformation Metrics ---
 compute T_core core temp
@@ -118,34 +123,36 @@ variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
 compute Szz all reduce sum c_st[3]
 variable SigmaZZ_GPa equal -(c_Szz/v_Vol_total)*1.0e-4
 
-# Enthalpy (PE + KE) per atom
 compute ke_all all ke/atom
 compute H_total_compute all reduce sum c_pe_all c_ke_all
 variable H_total_eV equal c_H_total_compute[1]+c_H_total_compute[2]
 
-# --- E. Displacement (FIXED for restart) ---
-# Store reference positions on first run only
-if "$(step) == 0" then "fix ref_pos all store/state 0 x y z"
-# Calculate displacement manually from stored reference
-variable dx atom x-f_ref_pos[1]
-variable dy atom y-f_ref_pos[2]
-variable dz atom z-f_ref_pos[3]
-variable disp_mag atom sqrt(v_dx*v_dx+v_dy*v_dy+v_dz*v_dz)
-compute disp_rms all reduce ave v_disp_mag
+# --- E. Displacement (restart-safe) ---
+fix disp_COMPUTE_STORE all store/state 0 x y z
+
+variable dx atom x-f_disp_COMPUTE_STORE[1]
+variable dy atom y-f_disp_COMPUTE_STORE[2]
+variable dz atom z-f_disp_COMPUTE_STORE[3]
+variable disp2 atom (v_dx*v_dx+v_dy*v_dy+v_dz*v_dz)
+
+# TRUE RMS displacement (scalar): sqrt(mean(disp^2))
+compute disp2_mean all reduce ave v_disp2
+variable disp_rms equal sqrt(c_disp2_mean)
 
 # ==========================================================================
 # 4. OUTPUTS
 # ==========================================================================
 thermo 1000
-thermo_style custom step v_t_wall_hr temp c_T_core v_frac_aus v_SigmaZZ_GPa
+# Put wall hours at the end
+thermo_style custom step temp c_T_core v_frac_aus v_SigmaZZ_GPa v_t_wall_hr
 
 fix data_out all print 1000 &
-"$(step) $(v_t_wall_hr) $(temp) $(c_T_core) $(v_H_total_eV) $(v_SigmaZZ_GPa) $(v_frac_aus) $(c_disp_rms)" &
+"$(step) $(temp) $(c_T_core) $(v_H_total_eV) $(v_SigmaZZ_GPa) $(v_frac_aus) $(v_disp_rms) $(v_t_wall_hr)" &
 file ${output_dir}/hysteresis_full.txt append yes screen no &
-title "# Step Wall_Hrs T_Global T_Core H_Total(eV) SigmaZZ(GPa) Frac_Aus Disp_RMS(A)"
+title "# Step T_Global T_Core H_Total(eV) SigmaZZ(GPa) Frac_Aus Disp_RMS(A) Wall_Hr"
 
 dump 1 all custom 5000 ${output_dir}/dump.cycle.*.gz &
-    id type x y z c_pe_all c_ack c_st[1] c_st[2] c_st[3] c_disp[1] c_disp[2] c_disp[3]
+    id type x y z c_pe_all c_ack c_st[1] c_st[2] c_st[3] v_dx v_dy v_dz v_disp2
 dump_modify 1 sort id element Ni Ti
 
 # Save restart files with two alternating names to save space but ensure safety
