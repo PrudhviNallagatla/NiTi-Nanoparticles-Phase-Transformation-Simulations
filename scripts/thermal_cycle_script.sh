@@ -121,7 +121,7 @@ for datafile in "${DATA_FILES[@]}"; do
     
     outdir="data/raw_output/${structure_name}/minimize"
     marker="${outdir}/.minimize_complete"
-    output_check="${outdir}/minimized.data"
+    output_check="${outdir}/final_minimized.data"  # Changed from minimized.data
     
     if [[ -f "${marker}" ]]; then
         echo "   ✓ ${structure_name} (already done)"
@@ -161,7 +161,7 @@ for datafile in "${DATA_FILES[@]}"; do
     structure_name=$(get_base_name "${datafile}")
 
     # Define Input/Output paths
-    indata="data/raw_output/${structure_name}/minimize/minimized.data"
+    indata="data/raw_output/${structure_name}/minimize/final_minimized.data"  # Changed from minimized.data
     outdir="data/raw_output/${structure_name}/thermal_cycle"
     restart_dir="${outdir}/restart_files"
     
