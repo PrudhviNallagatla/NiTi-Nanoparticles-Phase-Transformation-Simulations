@@ -1,5 +1,5 @@
 # ====================================================================
-#  EMERGENCY SCRIPT v9.7 - "COMPUTE FIX"
+#  EMERGENCY SCRIPT v9.8 - FINAL POLISHED
 # ====================================================================
 
 # --- 1. INITIALIZATION ---
@@ -23,9 +23,6 @@ variable MAX_EVAL   equal 500000
 
 shell mkdir -p "${output_dir}"
 
-# --- 4. TIME IN HOURS SETUP ---
-variable cpu_hr equal cpu/3600.0
-
 # ====================================================================
 #  5. SYSTEM SETUP - MANUAL TOGGLE
 # ====================================================================
@@ -41,7 +38,6 @@ jump SELF skip_to_stage3_logic
 # read_data       ${structure_file}
 
 # --- POTENTIAL SETUP ---
-# Load Balancing
 comm_style tiled
 fix bal all balance 1000 1.1 rcb
 
@@ -57,7 +53,7 @@ compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
 
 thermo      100
-thermo_style custom step temp pe fmax fnorm v_cpu_hr
+thermo_style custom step temp pe fmax fnorm
 
 # ====================================================================
 #  STAGE 1: DE-OVERLAP (SD)
@@ -75,7 +71,7 @@ write_restart ${output_dir}/stage1_sd.restart
 print " "
 print ">>> [STAGE 2] Thermal Anneal..."
 reset_timestep 0
-thermo_style custom step temp pe fmax fnorm v_cpu_hr
+thermo_style custom step temp pe fmax fnorm
 timestep 0.002 
 velocity all create 10.0 12345 dist gaussian
 fix 1 all nve/limit 0.1
@@ -137,7 +133,7 @@ label save_data
 print " "
 print ">>> DONE. Generating Final Report..."
 
-# --- THE FIX: We must re-define these here for the dump to work ---
+# --- RE-DEFINE COMPUTES FOR DUMP ---
 compute pe_atom all pe/atom
 compute csym    all centro/atom bcc
 compute coord   all coord/atom cutoff 3.5
@@ -169,13 +165,11 @@ compute pe_core core reduce ave c_pe_atom
 run 0 post no
 
 variable final_fmax equal fmax
-variable total_hrs equal v_cpu_hr
 
 print " "
 print "=========================================="
-print "  SCIENTIFIC REPORT (v9.7)"
+print "  SCIENTIFIC REPORT (v9.8)"
 print "=========================================="
 print "Final Force Max:  ${final_fmax} eV/A"
 print "Core PE/Atom:     $(c_pe_core) eV"
-print "Total Time:       ${total_hrs} hours"
 print "=========================================="
