@@ -208,4 +208,4 @@ run ${end_stage4} upto
 unfix 1
 write_restart ${restart_dir}/restart.stage4_end
 
-print ">>> SIMULATION COMPLETE. WALL HOURS: $(v_t_wall_hr)"
+print ">>> THERMAL CYCLE SIMULATION COMPLETE"

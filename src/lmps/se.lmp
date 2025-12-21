@@ -246,4 +246,4 @@ unfix nvt
 write_restart ${restart_dir}/restart.se_stage3_end
 write_data ${output_dir}/final.data
 
-print "SE PROTOCOL COMPLETE. CPU HOURS: $(v_cpu_hours)"
+print "SE PROTOCOL COMPLETE."

@@ -255,4 +255,4 @@ run ${end5} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage5_end
 
-print "SME CYCLE COMPLETE. CPU HOURS: $(v_cpu_hours)"
+print "SME CYCLE COMPLETE."
