@@ -1,130 +1,162 @@
 # NiTi Nanoparticle SME/SE Simulation Workspace
 
-This repository houses a high-throughput computational workflow for simulating **Nickel-Titanium (NiTi)** nanoparticles. It is designed to investigate the **Shape Memory Effect (SME)** and **Superelasticity (SE)** using Molecular Dynamics (MD).
+This repository houses a high-throughput computational workflow for simulating **Nickel-Titanium (NiTi)** nanoparticles using Molecular Dynamics (MD). It is designed to investigate two critical material behaviors—the **Shape Memory Effect (SME)** and **Superelasticity (SE)**—under realistic synthesis conditions.
 
-The workspace specifically targets the simulation of realistic **Electrical Discharge Machining (EDM)** synthesis conditions, enabling the study of rapid quenching effects, amorphous structures, and size-dependent phase transformations.
+## 📂 Repository Structure
 
----
-
-## 📂 Repository Architecture
-
-The workspace follows a strict separation of concerns, decoupling the simulation logic from the physical models and the generated data. This modular structure ensures scalability and data integrity.
+The workspace is organized to keep simulation logic separate from data and physical parameters.
 
 ```text
 .
-├── scripts/                      # ORCHESTRATION LAYER (The Controller)
-│   ├── run_all.sh                # Master pipeline trigger
-│   ├── structure_gen.sh          # Batch generator wrapper
-│   ├── se_pipeline.sh            # Superelasticity workflow logic
-│   └── sme_scripts/              # Shape Memory Effect workflow logic
+├── src/
+│   ├── lmps/                   # LAMMPS Input Scripts
+│   │   ├── thermal_cycle.lmp   # Phase transformation simulation
+│   │   ├── sme.lmp             # Shape Memory Effect simulation
+│   │   └── se.lmp              # Superelasticity simulation
+│   ├── analysis/               # Python Post-Processing Tools
+│   └── niti_np_gen.py          # Nanoparticle structure generator
 │
-├── src/                          # SOURCE CODE LAYER (The Engine)
-│   ├── niti_np_gen.py            # Python-based nanoparticle generator
-│   └── lmps/                     # LAMMPS input script templates
+├── data/
+│   ├── structures/             # Input .data files
+│   ├── raw_output/             # Simulation dump files and restarts
+│   └── analysis_output/        # Calculated properties (Hysteresis/Stress-Strain)
 │
-├── data/                         # DATA STORAGE LAYER (The Vault)
-│   ├── structures/               # Generated input files (.data)
-│   ├── raw_output/               # Simulation dumps and thermodynamic logs
-│   └── analysis_output/          # Final plots and calculated properties
+├── potentials/                 # Interatomic Potentials
+│   ├── NiTi.meam               # MEAM parameter file
+│   └── library.meam            # Element library
 │
-├── potentials/                   # PHYSICS LAYER (The Model)
-│   ├── NiTi.meam                 # MEAM parameter file
-│   └── library.meam              # Element library
-│
-└── logs/                         # LOGGING
+└── scripts/                    # Helper scripts for submission
 
 ```
 
-### Component Breakdown
-
-* **Orchestration Layer (`scripts/`)**: Shell scripts that drive the entire lifecycle. These scripts manage file paths, handle parallel execution, and trigger the physics engine.
-* **Source Layer (`src/`)**: Contains the procedural generation logic for creating nanoparticles and the raw LAMMPS templates.
-* **Physics Layer (`potentials/`)**: Isolates the interatomic potentials to ensure modularity.
-* **Data Layer (`data/`)**: A centralized hub for all simulation I/O, ensuring that raw data and analyzed results remain distinct from the codebase.
-
----
-
-## ⚙️ Workflow Overview
-
-The pipeline operates in three sequential stages:
-
-1. **Structure Generation**: The Python generator (`src/`) constructs the nanoparticle geometry, applying specific EDM characteristics such as amorphous fractions or surface defects.
-2. **Simulation Execution**: The orchestration scripts (`scripts/`) detect new structures and automatically queue them for processing. This includes:
-* **SME Pipeline**: Thermal cycling to determine transformation temperatures ().
-* **SE Pipeline**: Mechanical loading cycles to observe the superelastic stress-strain hysteresis.
+* **`src/lmps/`**: Contains the core simulation instructions (LAMMPS input files).
+* **`thermal_cycle.lmp`**: The foundational simulation that establishes the thermal history of the particle.
+* **`sme.lmp`**: The script for simulating the Shape Memory Effect (Low-Temperature behavior).
+* **`se.lmp`**: The script for simulating Superelasticity (High-Temperature behavior).
 
 
-3. **Analysis**: Post-processing notebooks utilize the raw thermodynamic logs to extract material properties and generate visualizations.
+* **`src/analysis/`**: Contains Python tools for post-processing and validating the physics (e.g., checking phase fractions).
+* **`data/`**: The storage location for all outputs, including raw atom positions (dumps) and calculated material properties (logs).
+* **`potentials/`**: Stores the physics definitions (MEAM potential files) that define how Ni and Ti atoms interact.
 
 ---
 
-## 💻 System Requirements
+## ⚙️ Simulation Protocol (How to Proceed)
 
-This workflow is computationally intensive. The following specifications are recommended to ensure reasonable simulation times and data handling capabilities.
+This workflow is sequential. You cannot run the mechanical tests (SME/SE) until you have successfully established the thermal baseline.
 
-### Hardware Recommendations
+### Step 1: Establish the Thermal Baseline (`thermal_cycle`)
 
-* **Processor (CPU)**: Minimum **8 Physical Cores** recommended.
-* *Note*: LAMMPS scales well with MPI; running on fewer cores will significantly increase runtime.
+**What it does:**
+This simulation takes your generated nanoparticle and runs it through a full heating and cooling loop. It heats the particle to a high temperature (Austenite phase) and cools it to a low temperature (Martensite phase).
+
+**Why it is needed:**
+Real materials have a "thermal history." You cannot simply start a simulation at 0 Kelvin. This step generates "Restart Files"—snapshots of the atoms at critical points (fully cooled, fully heated)—which serve as the starting points for the next steps.
+
+**Action:**
+Run the thermal cycle simulation first. Wait for it to complete the full loop (Heating  Cooling  Heating).
+
+### Step 2: Validate the Physics (Critical Analysis)
+
+**What it is:**
+Before running mechanical tests, you must verify that your particle actually transformed.
+
+* ** (Martensite Finish):** The temperature where the particle becomes fully Martensite.
+* ** (Austenite Finish):** The temperature where the particle becomes fully Austenite.
+
+**How to do it:**
+Use the analysis tools to look at the "Phase Fraction" from Step 1.
+
+1. Check if the particle is **100% Martensite** at your target low temperature (e.g., 200K).
+2. Check if the particle is **100% Austenite** at your target high temperature (e.g., 500K).
+
+**Decision:**
+
+* If the particle is *not* fully Martensite at 200K, you must lower the temperature in the SME script.
+* If the particle is *not* fully Austenite at 500K, you must raise the temperature in the SE script.
+
+### Step 3: Mechanical Testing
+
+Once the thermal baseline is verified, you can run the following two simulations. They are independent and can be run simultaneously.
+
+#### A. Shape Memory Effect (`sme`)
+
+**The Goal:** Demonstrate that the material can "remember" its original shape.
+**The Process:**
+
+1. **Load:** The simulation picks up the "Fully Cooled" snapshot from Step 1.
+2. **Deform:** It mechanically crushes (compresses) the particle at low temperature. The material stays deformed after unloading.
+3. **Recover:** It heats the particle back up. If successful, the particle will spontaneously snap back to its original shape.
+
+#### B. Superelasticity (`se`)
+
+**The Goal:** Demonstrate rubber-like elasticity at high temperatures.
+**The Process:**
+
+1. **Load:** The simulation picks up the "Fully Heated" snapshot from Step 1.
+2. **Cycle:** It compresses and releases the particle at high temperature.
+3. **Result:** unlike normal metals, it should recover massive strains immediately upon unloading, producing a characteristic "flag-shaped" hysteresis loop in the data.
+
+---
+
+## 💻 Hardware & Execution Environment
+
+These simulations are computationally expensive due to the complexity of the MEAM potential. A standard laptop is generally insufficient for production runs.
+
+### Recommended Hardware
+
+* **CPU Architecture:**
+* **Minimum:** 8 Physical Cores (e.g., Modern Ryzen 7 / Intel i7).
+* **Recommended:** 16-32 Physical Cores (Workstation or HPC Node).
+* *Note:* The MEAM potential scales reasonably well with MPI, but performance gains diminish beyond ~64 cores for small nanoparticles (<50k atoms).
 
 
-* **Memory (RAM)**: Minimum **16 GB**.
-* *Reasoning*: Large-scale atom dumps and post-processing of thermodynamic logs require substantial memory overhead.
+* **Memory (RAM):**
+* **Minimum:** 16 GB.
+* **Recommended:** 32 GB or higher. Large atomic dump files and trajectory analysis require significant memory overhead.
 
 
-* **Storage**: SSD with high I/O throughput.
-* *Space*: Ensure at least 50GB of free space for raw dump files before data reduction.
+* **Storage:**
+* **Requirement:** High-speed SSD.
+* **Capacity:** Ensure at least **50-100 GB** of free space. A full SME cycle generates thousands of frame snapshots; insufficient disk space will cause the simulation to crash mid-run.
 
 
 
 ### Software Prerequisites
 
-* **LAMMPS**: Compiled with `MPI` support and the `MEAM` package installed.
-* **Python 3.8+**: Required for the generation and analysis modules.
-* **Python Libraries**: `numpy`, `pandas`, `scipy`, `matplotlib`, `jupyter`.
+To run these scripts, your environment must have the following installed and configured:
 
-<!-- ---
+1. **LAMMPS (Large-scale Atomic/Molecular Massively Parallel Simulator)**
+* **Version:** Stable release (2020 or later).
+* **Required Packages:** You *must* compile LAMMPS with the following packages enabled:
+* `MEAM` (Modified Embedded Atom Method)
+* `MANYBODY` (For multi-body interactions)
+* `MPI` (Message Passing Interface for parallel execution)
+* `MOLECULE` (Standard atomistic definitions)
 
-## ⏱️ Performance Benchmarks
 
-Simulating phase transformations in nanostructures requires precise time-integration and long relaxation periods. Users should plan for significant runtime durations.
 
-| Simulation Type | Particle Size | Cores | Approx. Runtime |
-| --- | --- | --- | --- |
-| **SME (Thermal Cycle)** | 10nm | 8 | ~ 40+ Hours |
-| **SME (Thermal Cycle)** | 20nm | 8 | ~ 40+ Hours |
-| **SE (Mechanical Load)** | 15nm | 16 | ~ 40+ Hours |
 
-> **Note:** These estimates assume a standard thermal cycling rate (e.g., 20K/ns). Slower heating/cooling rates intended for higher accuracy will linearly increase these times. -->
+2. **Python Environment**
+* **Python 3.8+**
+* **Libraries:** `numpy` (math), `pandas` (data handling), `scipy` (curve fitting).
 
----
 
-## 🤝 Contributing
-
-Contributions to improve the generator logic or optimize the LAMMPS scripts are welcome.
-
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature/NewShape`).
-3. Commit your changes.
-4. Open a Pull Request.
 
 ---
 
-## 📚 References & Potentials
+## 📚 References
 
-The reliability of these simulations depends entirely on the accuracy of the interatomic potential used.
+This project relies on validated interatomic potentials and methodologies from the following literature:
 
-The scripts in this repository are configured to use the **Modified Embedded Atom Method (MEAM)**. Users must ensure that the `NiTi.meam` and `library.meam` files located in the `potentials/` directory correspond to validated literature.
+* **Primary Potential (Ni-Ti MEAM):**
+* Ko, W. S., Grabowski, B., & Neugebauer, J. (2015). Development of a modified embedded-atom method potential for Ni-Ti systems. *Physical Review B*, 92(13), 134107.
 
-**Recommended Potential:**
 
-> **Ko, W. S., Grabowski, B., & Neugebauer, J. (2015).** Development of a modified embedded-atom method potential for Ni-Ti systems. *Physical Review B*, 92(13), 134107.
+* **Structure Identification:**
+* Ackland, G. J., & Jones, A. P. (2006). Applications of local crystal structure measures in atomistic simulations. *Physical Review B*, 73(5), 054104.
 
-*Please ensure you have the appropriate license or rights to use specific potential files if they are not open source.*
 
----
-
-## 📧 Contact
-
-For questions regarding the workflow implementation or simulation parameters, please open an issue in this repository.
+* **Phase Transformation Methodology:**
+* Waitz, T., et al. (2004). Size-dependent martensitic transformation in NiTi nanoparticles. *Acta Materialia*, 52(1), 137-147.
 

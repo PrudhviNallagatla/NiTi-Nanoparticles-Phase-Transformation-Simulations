@@ -1,6 +1,6 @@
 # filepath: /home/rimuru/workspace/src/lmps/se.lmp
-# GOAL: Journal-Grade NiTi Nanoparticle Superelasticity (Linear Execution)
-# REVISION: v3 (Removed wrapper IFs, preserved Physics/Logic)
+# GOAL: Journal-Grade NiTi Nanoparticle Superelasticity (Final Output Fix)
+# REVISION: v16 (Fixed 'append yes' Bug + Buffer Physics)
 
 clear
 units       metal
@@ -9,25 +9,26 @@ boundary    s s s
 atom_style  atomic
 
 # ==========================================================================
-# 1. ENVIRONMENT & VARIABLES
+# 1. SETUP
 # ==========================================================================
-variable input_data    getenv INPUT_DATA
 variable output_dir    getenv OUTPUT_DIR
 variable restart_dir   getenv RESTART_DIR
 variable pot_lib       getenv POT_LIB
 variable pot_file      getenv POT_FILE
-variable seed          getenv SEED
-
-# Restart cadence
-variable restart_every equal 10000
+variable thermal_file  getenv THERMAL_RESTART
 
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
 
-# --- INITIALIZATION (Crash-Proof) ---
-# Requires START_CMD env var (see bash note below)
-variable start_cmd getenv START_CMD
-${start_cmd}
+# Clean up any zombie reference files from failed runs
+variable param_file string "${output_dir}/se_ref.lmp"
+shell rm -f ${param_file}
+
+print ">>> STARTING SE SIMULATION"
+print ">>> Loading Thermal History: ${thermal_file}"
+
+read_restart ${thermal_file}
+reset_timestep 0
 
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
@@ -41,48 +42,8 @@ fix bal all balance 5000 1.05 rcb
 timestep    0.002
 
 # ==========================================================================
-# 2. PROTOCOL & PHYSICS
+# 2. DIAGNOSTICS
 # ==========================================================================
-# [CRITICAL] T_se must be > Af (Austenite Finish Temp)
-variable T_se       equal 500.0   
-variable tdamp      equal 100.0*dt
-
-# --- Mechanical Loading (Compression) ---
-variable strain_max equal 0.10      # 10% Strain
-variable load_time  equal 2000.0    # ps
-variable load_steps equal round(v_load_time/dt)
-variable unload_time equal 2000.0
-variable unload_steps equal round(v_unload_time/dt)
-
-variable eq_steps   equal 30000
-variable hold_steps equal 20000
-
-# --- Stage End Steps (Absolute) ---
-variable end0 equal v_eq_steps
-variable end1 equal v_end0+v_load_steps
-variable end2 equal v_end1+v_unload_steps
-variable end3 equal v_end2+v_hold_steps
-
-# --- RESTART-PROOF REFERENCE LOGIC ---
-variable param_file string "${output_dir}/se_ref.lmp"
-# 1. Ensure file exists
-shell touch "${param_file}"
-# 2. Defaults (0.0)
-variable Lz_ref equal 0.0
-variable z_hi0  equal 0.0
-variable z_lo0  equal 0.0
-# 3. Load saved values if they exist (Restart Safe)
-include ${param_file}
-
-# ==========================================================================
-# 3. ADVANCED COMPUTATIONS
-# ==========================================================================
-
-# --- A. Time & Cost ---
-variable t_elapsed equal elapsed
-variable cpu_hours equal v_t_elapsed/3600.0
-
-# --- B. Core/Surface & Geometry ---
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
@@ -92,67 +53,63 @@ variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
 compute r2max all reduce max v_rsq
 variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
 
-# Core Group
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
 group core dynamic all var core_mask every 1000
 
-# --- C. Thermodynamics ---
 compute T_core core temp
 compute pe_atom all pe/atom
 compute ke_atom all ke/atom
 
-# Enthalpy (H = PE + KE)
+# Enthalpy
 compute H_all all reduce sum c_pe_atom c_ke_atom
 variable H_total_eV equal c_H_all[1]+c_H_all[2]
 
-# --- D. Crystallography ---
 compute csym all centro/atom bcc
 compute ack  all ackland/atom
 compute cna  all cna/atom 3.0
 
-# Phase Fraction (Austenite Proxy: Ackland == 3)
 variable is_austenite atom "c_ack == 3"
 compute n_aus core reduce sum v_is_austenite
-variable n_core   equal "count(core)"
+variable n_core    equal "count(core)"
 variable frac_aus equal "c_n_aus/(v_n_core+1.0e-6)"
 
-# --- E. Stress (Tensor) ---
 compute st all stress/atom NULL
-# Global Stress (Virial)
 compute Szz all reduce sum c_st[3]
 variable sigma_zz_GPa equal -(c_Szz/(v_Vol_total+1.0e-12))*1.0e-4
-
-# Local Stress (Visualization)
 variable vm_atom atom sqrt(0.5*((c_st[1]-c_st[2])^2+(c_st[2]-c_st[3])^2+(c_st[3]-c_st[1])^2+6*(c_st[4]^2+c_st[5]^2+c_st[6]^2)))
 variable p_atom  atom -(c_st[1]+c_st[2]+c_st[3])/3.0
 
-# --- F. Strain & Shape ---
-compute gyr all gyration
-variable Rg    equal c_gyr
-
+# --- SHAPE & STRAIN ---
 compute zmin all reduce min z
 compute zmax all reduce max z
-variable Lz equal (c_zmax - c_zmin)
+variable Lz equal c_zmax-c_zmin
 
-# Strain (Restart-Safe)
-variable strain equal "(v_Lz_ref > 0) * (v_Lz - v_Lz_ref)/(v_Lz_ref+1.0e-12)"
+# Default Initialization
+variable Lz_ref equal 0.0
+variable z_hi0  equal 0.0
+variable z_lo0  equal 0.0
 
-# Displacement
+variable strain equal (v_Lz_ref>0)*(v_Lz-v_Lz_ref)/(v_Lz_ref+1.0e-12)
+
 compute disp all displace/atom
 variable disp_mag atom sqrt(c_disp[1]^2+c_disp[2]^2+c_disp[3]^2)
 compute disp_rms all reduce ave v_disp_mag
 
 # ==========================================================================
-# 4. OUTPUTS
+# 3. OUTPUTS
 # ==========================================================================
-thermo 1000
-thermo_style custom step v_cpu_hours temp c_T_core v_strain v_sigma_zz_GPa
+variable t_cpu      equal cpu
+variable cpu_hours  equal v_t_cpu/3600.0
 
+thermo 1000
+thermo_style custom step temp c_T_core v_strain v_sigma_zz_GPa v_frac_aus v_cpu_hours
+
+# REMOVED "append yes" -> This ensures data goes into se_data.txt
 fix out all print 500 &
-"$(step) $(v_cpu_hours) $(temp) $(c_T_core) $(v_Lz) $(v_strain) $(v_sigma_zz_GPa) $(v_frac_aus) $(v_H_total_eV) $(c_disp_rms)" &
-file ${output_dir}/se_data.txt append yes screen no &
-title "# Step CPU_Hrs T_Global T_Core Lz Strain SigmaZZ(GPa) Frac_Aus H_Total(eV) Disp_RMS(A)"
+"$(step) $(temp) $(c_T_core) $(v_Lz) $(v_strain) $(v_sigma_zz_GPa) $(v_frac_aus) $(v_H_total_eV) $(c_disp_rms) $(v_cpu_hours)" &
+file ${output_dir}/se_data.txt screen no &
+title "# Step T_Global T_Core Lz Strain SigmaZZ(GPa) Frac_Aus H_Total(eV) Disp_RMS(A) CPU_Hrs"
 
 dump 1 all custom 5000 ${output_dir}/dump.se.*.gz &
     id type x y z &
@@ -162,88 +119,97 @@ dump 1 all custom 5000 ${output_dir}/dump.se.*.gz &
     c_disp[1] c_disp[2] c_disp[3]
 dump_modify 1 sort id element Ni Ti
 
-restart ${restart_every} ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
+restart 10000 ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
 # ==========================================================================
-# 5. EXECUTION (Linear Flow)
+# 4. PROTOCOL
 # ==========================================================================
+variable T_se       equal 500.0   
+variable tdamp      equal 100.0*dt
+variable strain_max equal 0.10      
+variable load_time  equal 2000.0    
+variable unload_time equal 2000.0    
+variable hold_time  equal 500.0     
 
-# Init Velocities (Only runs if step is 0)
-if "$(step) == 0" then "velocity all create ${T_se} ${seed} mom yes rot yes dist gaussian"
+variable load_steps    equal round(v_load_time/dt)
+variable unload_steps equal round(v_unload_time/dt)
+variable hold_steps    equal round(v_hold_time/dt)
+variable eq_steps      equal 1000
+
+variable end0_abs equal v_eq_steps
+variable end1_abs equal v_end0_abs+v_load_steps
+variable end2_abs equal v_end1_abs+v_unload_steps
+
 fix mom all momentum 100 linear 1 1 1 angular
 
-print ">>> STARTING SUPERELASTICITY PROTOCOL..."
-
 # --- STAGE 0: EQUILIBRATION ---
-print ">>> STAGE 0: Equilibrating Austenite at ${T_se} K"
+print ">>> STAGE 0: Equilibrating"
 fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}
-run ${end0} upto
+run ${end0_abs} upto
 unfix nvt
 write_restart ${restart_dir}/restart.se_stage0_end
 
-# --- CAPTURE REFERENCE STATE ---
-# Precise check: Only runs if we just finished Stage 0. 
-# Prevents overwriting 'se_ref.lmp' with compressed data during a Stage 1 restart.
-if "$(step) == $(v_end0)" then &
-  "run 0" &
-  "variable current_Lz  equal v_Lz" &
-  "variable current_zhi equal c_zmax" &
-  "variable current_zlo equal c_zmin" &
-  "print '# Reference Parameters' file ${param_file}" &
-  "print 'variable Lz_ref equal ${current_Lz}' append ${param_file}" &
-  "print 'variable z_hi0  equal ${current_zhi}' append ${param_file}" &
-  "print 'variable z_lo0  equal ${current_zlo}' append ${param_file}" &
-  "print '>>> REFERENCE STATE SAVED to ${param_file}'" &
-  "include ${param_file}"
+# --- CAPTURE REFERENCE ---
+variable current_Lz  equal v_Lz
+variable current_zhi equal c_zmax
+variable current_zlo equal c_zmin
 
-# --- STAGE 1: LOADING (COMPRESSION) ---
-print ">>> STAGE 1: Loading (Compression)"
+variable Lz_ref delete
+variable z_hi0  delete
+variable z_lo0  delete
+variable Lz_ref equal ${current_Lz}
+variable z_hi0  equal ${current_zhi}
+variable z_lo0  equal ${current_zlo}
+
+print "# Reference Params" file ${param_file}
+print "variable Lz_ref equal ${current_Lz}" append ${param_file}
+print "variable z_hi0  equal ${current_zhi}" append ${param_file}
+print "variable z_lo0  equal ${current_zlo}" append ${param_file}
+print ">>> REFERENCE STATE CAPTURED: Lz=${Lz_ref}"
+
+# --- STAGE 1: LOADING ---
+print ">>> STAGE 1: Loading"
 fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}
 
-# Define Ramp Variables locally for this stage
-variable start_step_load equal ${end0}
-variable ramp_load       equal (step-v_start_step_load)/${load_steps}
-variable ramp_safe_load  equal (step>(v_start_step_load+${load_steps}))?1.0:v_ramp_load
-# Wall Positions
-variable pos_hi_load     equal v_z_hi0-(v_Lz_ref*${strain_max}*0.5*v_ramp_safe_load)
-variable pos_lo_load     equal v_z_lo0+(v_Lz_ref*${strain_max}*0.5*v_ramp_safe_load)
+# --- SAFETY BUFFER LOGIC ---
+variable buffer equal 5.0
+variable ramp_load  equal (step-v_end0_abs)/${load_steps}
+
+# Calculate total travel distance: Buffer + Actual Compression
+variable compress_dist equal (v_Lz_ref*${strain_max}*0.5)
+variable travel_dist   equal (v_buffer+v_compress_dist)
+
+# Start at (z_hi0 + buffer), End at (z_hi0 - compress_dist)
+variable pos_hi_load equal (v_z_hi0+v_buffer)-(v_travel_dist*v_ramp_load)
+variable pos_lo_load equal (v_z_lo0-v_buffer)+(v_travel_dist*v_ramp_load)
 
 fix wall_hi all wall/harmonic zhi v_pos_hi_load 1000.0 0.0 2.5 units box
 fix wall_lo all wall/harmonic zlo v_pos_lo_load 1000.0 0.0 2.5 units box
 
-run ${end1} upto
+run ${end1_abs} upto
 unfix wall_hi
 unfix wall_lo
 unfix nvt
 write_restart ${restart_dir}/restart.se_stage1_end
 
-# --- STAGE 2: UNLOADING (RELAXATION) ---
+# --- STAGE 2: UNLOADING ---
 print ">>> STAGE 2: Unloading"
 fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}
 
-# Define Ramp Variables locally for this stage
-variable start_step_unload equal ${end1}
-variable ramp_unload       equal (step-v_start_step_unload)/${unload_steps}
-variable ramp_safe_unload  equal (step>(v_start_step_unload+${unload_steps}))?1.0:v_ramp_unload
-# Unloading Geometry: Moves from StrainMax -> 0
-variable pos_hi_unload     equal v_z_hi0-(v_Lz_ref*${strain_max}*0.5*(1.0-v_ramp_safe_unload))
-variable pos_lo_unload     equal v_z_lo0+(v_Lz_ref*${strain_max}*0.5*(1.0-v_ramp_safe_unload))
+variable ramp_unload equal (step-v_end1_abs)/${unload_steps}
 
-fix wall_hi all wall/harmonic zhi v_pos_hi_unload 100.0 0.0 2.5 units box
-fix wall_lo all wall/harmonic zlo v_pos_lo_unload 100.0 0.0 2.5 units box
+# Inverse Logic: Start at Compressed, End at (z_hi0 + buffer)
+variable pos_hi_unload equal (v_z_hi0-v_compress_dist)+(v_travel_dist*v_ramp_unload)
+variable pos_lo_unload equal (v_z_lo0+v_compress_dist)-(v_travel_dist*v_ramp_unload)
 
-run ${end2} upto
+fix wall_hi all wall/harmonic zhi v_pos_hi_unload 1000.0 0.0 2.5 units box
+fix wall_lo all wall/harmonic zlo v_pos_lo_unload 1000.0 0.0 2.5 units box
+
+run ${end2_abs} upto
 unfix wall_hi
 unfix wall_lo
 unfix nvt
 write_restart ${restart_dir}/restart.se_stage2_end
 
-# --- STAGE 3: FINAL HOLD ---
-print ">>> STAGE 3: Final Hold (Checking Recovery)"
-fix nvt all nvt temp ${T_se} ${T_se} ${tdamp}
-run ${end3} upto
-unfix nvt
-write_restart ${restart_dir}/restart.se_stage3_end
-write_data ${output_dir}/final.data
-
-print "SE PROTOCOL COMPLETE."
+print ">>> DONE"
+write_data ${output_dir}/final.data nocoeff
