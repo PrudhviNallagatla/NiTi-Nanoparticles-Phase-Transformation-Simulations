@@ -3,27 +3,27 @@ import re
 import os
 import sys
 import numpy as np
+import matplotlib
+# FORCE HEADLESS MODE (Fixes QDBusError/Display crashes on Linux servers)
+matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
-import seaborn as sns
+# Import MaxNLocator to fix the "Missing Grid/Y-values" bug
+from matplotlib.ticker import MultipleLocator, AutoMinorLocator, MaxNLocator
 from scipy.signal import savgol_filter
 from ovito.io import import_file
 from ovito.modifiers import (
     PolyhedralTemplateMatchingModifier,
     ClusterAnalysisModifier,
-    AtomicStrainModifier
+    AtomicStrainModifier,
+    ExpressionSelectionModifier
 )
 
 # ==============================================================================
-# 1. USER CONFIGURATION (HARDCODE YOUR PATH HERE)
+# 1. USER CONFIGURATION
 # ==============================================================================
-# POINT THIS TO YOUR RAW DATA FOLDER
 INPUT_DIR = "/home/rimuru/workspace/data/raw_output/niti_10nm_Ni50_single_crystal/thermal_cycle"
-
-# AUTOMATIC OUTPUT PATH GENERATION
-# Flips 'raw_output' to 'analysis_output' automatically
 OUTPUT_DIR = INPUT_DIR.replace("raw_output", "analysis_output")
 
-# Check Paths
 if not os.path.exists(INPUT_DIR):
     print(f"ERROR: Input directory does not exist!\n{INPUT_DIR}")
     sys.exit(1)
@@ -33,36 +33,14 @@ if not os.path.exists(OUTPUT_DIR):
     print(f"I: Created output directory: {OUTPUT_DIR}")
 
 # ==============================================================================
-# 2. JOURNAL STYLE SETTINGS (Acta Materialia / Scripta Mat)
-# ==============================================================================
-# Clean, professional, high-contrast
-plt.rcParams['font.family'] = 'sans-serif'
-plt.rcParams['font.sans-serif'] = ['Arial', 'Helvetica', 'DejaVu Sans']
-plt.rcParams['font.size'] = 12
-plt.rcParams['axes.linewidth'] = 1.5
-plt.rcParams['xtick.major.width'] = 1.5
-plt.rcParams['ytick.major.width'] = 1.5
-plt.rcParams['xtick.direction'] = 'in'
-plt.rcParams['ytick.direction'] = 'in'
-plt.rcParams['xtick.top'] = True
-plt.rcParams['ytick.right'] = True
-plt.rcParams['legend.frameon'] = False
-
-# "Nature" Style Color Palette
-C_COOL = '#0072B2'  # Blue
-C_HEAT = '#D55E00'  # Red
-C_CORE = '#009E73'  # Green
-C_SURF = '#CC79A7'  # Purple
-
-# ==============================================================================
-# 3. PHYSICS PARAMETERS (MATCH LAMMPS)
+# 2. PHYSICS PARAMETERS
 # ==============================================================================
 T_LOW  = 200.0
 T_HIGH = 500.0
 RATE   = 0.35
 DT     = 0.002
-RMSD   = 0.15   # Critical for NiTi PTM
-CORE_FRAC = 0.8 # Core radius fraction
+RMSD   = 0.15
+CORE_FRAC = 0.8
 
 # Timing
 DELTA_T    = T_HIGH - T_LOW
@@ -74,7 +52,7 @@ END_STAGE2 = END_STAGE1 + RUN_HOLD
 END_STAGE3 = END_STAGE2 + RUN_RAMP
 
 # ==============================================================================
-# 4. ANALYSIS ENGINE
+# 3. ANALYSIS ENGINE
 # ==============================================================================
 def get_temp(step):
     if step <= END_STAGE0: return T_HIGH
@@ -91,11 +69,30 @@ if not files:
     print("ERROR: No dump files found.")
     sys.exit(1)
 
-# --- MODIFIERS ---
+# --- MODIFIERS SETUP ---
+print("I: Configuring OVITO Modifiers...")
+
+# 1. PTM
 ptm = PolyhedralTemplateMatchingModifier(rmsd_cutoff=RMSD, output_orientation=False)
-ref_file = files[0] # Use first frame as reference for strain
-strain_mod = AtomicStrainModifier(cutoff=3.5, reference=import_file(ref_file))
-cluster = ClusterAnalysisModifier(cutoff=3.5, sort_by_size=True, only_selected=True)
+
+# 2. Strain (Requires Reference Pipeline Source)
+ref_pipeline = import_file(files[0]) 
+strain_mod = AtomicStrainModifier(cutoff=3.5)
+strain_mod.reference = ref_pipeline.source 
+
+# 3. Selection (Select NON-Austenite)
+# Assuming Structure Type 3 is Austenite (B2)
+select_mod = ExpressionSelectionModifier(expression = "StructureType != 3")
+
+# 4. Cluster (Runs on selection)
+cluster_mod = ClusterAnalysisModifier(cutoff=3.5, sort_by_size=True, only_selected=True)
+
+# Build Pipeline
+pipeline = import_file(files[0])
+pipeline.modifiers.append(ptm)
+pipeline.modifiers.append(strain_mod)
+pipeline.modifiers.append(select_mod)
+pipeline.modifiers.append(cluster_mod)
 
 results = [] 
 
@@ -105,9 +102,8 @@ for i, fname in enumerate(files):
     step = int(re.search(r'dump\.cycle\.(\d+)', fname).group(1))
     temp = get_temp(step)
     
-    pipeline = import_file(fname)
-    pipeline.modifiers.append(ptm)
-    pipeline.modifiers.append(strain_mod) 
+    # Load Frame
+    pipeline.source.load(fname)
     data = pipeline.compute()
     
     # --- A. GEOMETRY ---
@@ -144,16 +140,14 @@ for i, fname in enumerate(files):
         stress_gpa = (trace_sum / 3.0) / vol_core / 10000.0
         
     # --- E. MICROSTRUCTURE ---
-    selection = data.particles.create_property("Selection")
-    selection[...] = (structs != 3) # Select NON-Austenite
-    pipeline.modifiers.append(cluster)
-    data_cluster = pipeline.compute()
-    n_clusters = data_cluster.attributes['ClusterAnalysis.cluster_count']
+    if 'ClusterAnalysis.cluster_count' in data.attributes:
+        n_clusters = data.attributes['ClusterAnalysis.cluster_count']
+    else:
+        n_clusters = 0
     
     # --- F. BREATHING ---
     rg = np.sqrt(np.mean(r_sq))
     
-    # [Temp, f_aus, f_aus_c, f_aus_s, pe_c, shear, stress, clusters, rg, step]
     results.append([temp, f_aus, f_aus_c, f_aus_s, pe_core, shear_avg, stress_gpa, n_clusters, rg, step])
     
     if i % 50 == 0: print(f"   Step {step}: T={temp:.0f}K | Aus={f_aus:.2f}")
@@ -162,83 +156,204 @@ for i, fname in enumerate(files):
 arr = np.array(results)
 arr = arr[arr[:,9].argsort()]
 
-# Save raw data for Excel/Origin
+# Save raw data
 np.savetxt(f"{OUTPUT_DIR}/extracted_data.txt", arr, header="Temp f_Aus f_Aus_Core f_Aus_Surf PE_Core Shear Stress Clusters Rg Step")
 
 # ==============================================================================
-# 5. PLOTTING ENGINE (JOURNAL READY)
+# 4. PLOTTING ENGINE (FULL SIZE & CORRECT NAMES)
 # ==============================================================================
-cool_mask = arr[:, 9] <= END_STAGE2
-heat_mask = arr[:, 9] > END_STAGE2
+print("I: Generating High-Precision Plots...")
+
+# --- A. STYLE CONFIGURATION ---
+C_COOL_RAW  = '#A6C9E2'  # Faint Blue (Raw Data)
+C_COOL_LINE = '#004C99'  # Strong Blue (Trend)
+C_HEAT_RAW  = '#F4A6A6'  # Faint Red (Raw Data)
+C_HEAT_LINE = '#D62828'  # Strong Red (Trend)
+C_FILL      = '#E0E0E0'  # Grey (Hysteresis Area)
+
+plt.rcParams.update({
+    'font.family': 'sans-serif',
+    'font.sans-serif': ['Arial', 'DejaVu Sans'],
+    'font.size': 16,              # Bigger font
+    'axes.linewidth': 2.5,
+    'lines.linewidth': 3.0,
+    'xtick.major.size': 10,
+    'ytick.major.size': 10,
+    'grid.alpha': 0.6,
+})
+
+# --- B. DATA PREPARATION ---
+cool_mask = (arr[:, 9] <= END_STAGE2) & (arr[:, 0] <= T_HIGH)
+heat_mask = (arr[:, 9] > END_STAGE2) & (arr[:, 0] <= T_HIGH)
+
 cool = arr[cool_mask]
 heat = arr[heat_mask]
+cool = cool[cool[:, 0].argsort()[::-1]] 
+heat = heat[heat[:, 0].argsort()]       
 
-def make_plot(ax, yc, yh, ylab, title, show_legend=False):
-    ax.plot(cool[:,0], yc, '-', color=C_COOL, lw=2, label='Cooling ($A \\to M$)')
-    ax.plot(heat[:,0], yh, '-', color=C_HEAT, lw=2, label='Heating ($M \\to A$)')
-    ax.set_xlabel('Temperature (K)', fontweight='bold')
+# --- C. UNIVERSAL PLOTTING FUNCTION ---
+def make_detailed_plot(ax, x_c, y_c, x_h, y_h, ylab, title, show_legend=False):
+    # 1. Hysteresis Fill
+    if len(x_c) > 1 and len(x_h) > 1:
+        x_union = np.sort(np.unique(np.concatenate((x_c, x_h))))
+        yc_interp = np.interp(x_union, x_c[::-1], y_c[::-1]) 
+        yh_interp = np.interp(x_union, x_h, y_h)
+        ax.fill_between(x_union, yc_interp, yh_interp, color=C_FILL, alpha=0.3)
+
+    # 2. Ghost Plotting (Raw Data Dots)
+    ax.plot(x_c, y_c, 'o', color=C_COOL_LINE, markersize=3, alpha=0.2, markeredgewidth=0)
+    ax.plot(x_h, y_h, 'o', color=C_HEAT_LINE, markersize=3, alpha=0.2, markeredgewidth=0)
+
+    # 3. Smooth Trend Lines
+    win = 9 if len(x_c) > 9 else 3
+    yc_sm = savgol_filter(y_c, win, 3) if len(x_c) > win else y_c
+    yh_sm = savgol_filter(y_h, win, 3) if len(x_h) > win else y_h
+    
+    ax.plot(x_c, yc_sm, '-', color=C_COOL_LINE, label=r'Cooling ($A \to M$)', alpha=0.9)
+    ax.plot(x_h, yh_sm, '-', color=C_HEAT_LINE, label=r'Heating ($M \to A$)', alpha=0.9)
+    
+    # 4. Pinpoint Grids
+    ax.xaxis.set_major_locator(MultipleLocator(20))
+    ax.xaxis.set_minor_locator(MultipleLocator(5))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=6))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(2))
+
+    ax.grid(True, which='major', linestyle='-', color='#888888', alpha=0.5)
+    ax.grid(True, which='minor', linestyle=':', color='#AAAAAA', alpha=0.4)
+
+    ax.set_xlabel("Temperature (K)", fontweight='bold')
     ax.set_ylabel(ylab, fontweight='bold')
-    ax.set_title(title, fontsize=11, fontweight='bold')
-    ax.grid(True, linestyle='--', alpha=0.4)
-    if show_legend: ax.legend(loc='best', fontsize=9)
+    ax.set_title(title, fontweight='bold', fontsize=20, pad=15)
+    
+    if show_legend: 
+        ax.legend(fontsize=14, loc='best', frameon=True, framealpha=0.95)
 
-print("I: Generating Figures...")
-
-# --- 1. INDIVIDUAL GRAPHS ---
+# --- D. GENERATE INDIVIDUAL PLOTS ---
+# Format: (Filename, Column_Index, Y_Label, Title)
 plots_config = [
-    ("01_Hysteresis_Global", arr[:,1], "Austenite Fraction ($f_A$)", "Global Hysteresis"),
-    ("02_Hysteresis_Core",   arr[:,2], "Core Austenite Fraction",     "Core Transformation"),
-    ("03_Energy_DSC",        arr[:,4], "Potential Energy (eV/atom)",  "Thermodynamic Signature"),
-    ("04_Shear_Strain",      arr[:,5], "Avg. Shear Strain",           "Lattice Distortion"),
-    ("05_Internal_Stress",   arr[:,6], "Hydrostatic Stress (GPa)",    "Internal Conf. Stress"),
-    ("06_Nucleation",        arr[:,7], "Cluster Count ($N_c$)",       "Nucleation Density"),
-    ("07_Breathing_Rg",      arr[:,8], "Radius of Gyration ($\AA$)",  "Geometric Breathing")
+    ("Global_Hysteresis_Loop", 1, r"Austenite Fraction ($f_{Aus}$)", "Global Hysteresis Loop"),
+    ("Core_Transformation",    2, r"Core Austenite ($f_{Core}$)", "Core Transformation"),
+    ("Potential_Energy",       4, r"PE (eV/atom)", "Thermodynamic Response"), 
+    ("Shear_Strain",           5, r"Avg. Shear Strain ($\eta_{VM}$)", "Lattice Distortion"),
+    ("Internal_Stress",        6, r"Stress (GPa)", "Internal Stress Evolution"),
+    ("Cluster_Analysis",       7, r"Cluster Count", "Nucleation Density"),
+    ("Geometric_Breathing",    8, r"Radius of Gyration ($\AA$)", "Geometric Breathing"),
 ]
 
-for fname, col_data, ylab, title in plots_config:
-    plt.figure(figsize=(6,5))
-    yc = col_data[cool_mask]
-    yh = col_data[heat_mask]
-    make_plot(plt.gca(), yc, yh, ylab, title, show_legend=True)
+for fname, idx, ylab, title in plots_config:
+    # Large, spacious individual plots
+    fig = plt.figure(figsize=(12, 10)) 
+    make_detailed_plot(plt.gca(), cool[:,0], cool[:,idx], heat[:,0], heat[:,idx], ylab, title, show_legend=True)
     plt.tight_layout()
     plt.savefig(f"{OUTPUT_DIR}/{fname}.png", dpi=300)
-    plt.close()
+    plt.close(fig)
 
-# --- 2. MASTER DASHBOARD (ALL SUBPLOTS) ---
-fig, axes = plt.subplots(3, 3, figsize=(18, 15))
-fig.suptitle(f"Thermal Characterization Suite", fontsize=16, fontweight='bold')
+# --- E. MASTER DASHBOARD (FULL SIZE) ---
+print("I: Compiling Master Dashboard (Full Size)...")
+# Massive size (30 inches wide) to avoid "compacting"
+fig, axes = plt.subplots(2, 3, figsize=(30, 20))
+fig.suptitle(f"NiTi Thermal Analysis Suite", fontsize=30, fontweight='bold', y=0.96)
+ax_list = axes.flatten()
 
-# Row 1
-make_plot(axes[0,0], cool[:,1], heat[:,1], "$f_{Aus}$ (Global)", "(a) Global Hysteresis", True)
-make_plot(axes[0,1], cool[:,2], heat[:,2], "$f_{Aus}$ (Core)",   "(b) Core Hysteresis")
-make_plot(axes[0,2], cool[:,4], heat[:,4], "PE (eV/atom)",       "(c) Thermodynamics")
+# 1. Main Hysteresis
+make_detailed_plot(ax_list[0], cool[:,0], cool[:,1], heat[:,0], heat[:,1], r"$f_{Aus}$", "Global Phase Fraction", True)
 
-# Row 2
-make_plot(axes[1,0], cool[:,5], heat[:,5], "Shear Strain",       "(d) Shear Order Parameter")
-make_plot(axes[1,1], cool[:,6], heat[:,6], "Stress (GPa)",       "(e) Internal Stress")
-make_plot(axes[1,2], cool[:,8], heat[:,8], "Rg ($\AA$)",         "(f) Geometric Breathing")
+# 2. Core vs Surface
+ax = ax_list[1]
+ax.plot(cool[:,0], cool[:,2], '-', color='#228B22', label='Core', lw=4)
+ax.plot(cool[:,0], cool[:,3], '--', color='#800080', label='Surface', lw=4)
+ax.set_title("Core vs Surface Lag", fontweight='bold', fontsize=20)
+ax.set_xlabel("Temperature (K)", fontweight='bold')
+ax.set_ylabel("Austenite Fraction", fontweight='bold')
+ax.xaxis.set_major_locator(MultipleLocator(20))
+ax.grid(True, alpha=0.4)
+ax.legend(fontsize=14)
+ax.invert_xaxis()
 
-# Row 3
-make_plot(axes[2,0], cool[:,7], heat[:,7], "Cluster Count",      "(g) Nucleation Density")
+# 3. Energy
+make_detailed_plot(ax_list[2], cool[:,0], cool[:,4], heat[:,0], heat[:,4], "PE (eV)", "Thermodynamics")
 
-# (h) Core vs Surface Lag
-axes[2,1].plot(cool[:,0], cool[:,2], '-', color=C_CORE, lw=2, label='Core')
-axes[2,1].plot(cool[:,0], cool[:,3], '--', color=C_SURF, lw=2, label='Surface')
-axes[2,1].set_xlabel('Temperature (K)', fontweight='bold')
-axes[2,1].set_ylabel('$f_{Aus}$', fontweight='bold')
-axes[2,1].set_title('(h) Surface vs Core Lag', fontsize=11, fontweight='bold')
-axes[2,1].legend()
-axes[2,1].grid(True, linestyle='--', alpha=0.4)
+# 4. Stress
+make_detailed_plot(ax_list[3], cool[:,0], cool[:,6], heat[:,0], heat[:,6], "Stress (GPa)", "Internal Stress")
 
-# (i) Kinetics
-d_frac = np.gradient(cool[:,1], cool[:,0]) 
-axes[2,2].plot(cool[:,0], np.abs(d_frac), '-', color=C_COOL, lw=1.5)
-axes[2,2].set_xlabel('Temperature (K)', fontweight='bold')
-axes[2,2].set_ylabel('|df/dT|', fontweight='bold')
-axes[2,2].set_title('(i) Transformation Rate', fontsize=11, fontweight='bold')
-axes[2,2].grid(True, linestyle='--', alpha=0.4)
+# 5. Breathing (Rg) - Replaced Clusters with Breathing per your interest
+make_detailed_plot(ax_list[4], cool[:,0], cool[:,8], heat[:,0], heat[:,8], r"$R_g$ ($\AA$)", "Geometric Breathing")
 
-plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-plt.savefig(f"{OUTPUT_DIR}/MASTER_DASHBOARD.png", dpi=300)
+# 6. Kinetics
+ax = ax_list[5]
+valid_mask = np.insert(np.diff(cool[:,0]) != 0, 0, True) 
+T_clean = cool[valid_mask, 0]
+f_clean = cool[valid_mask, 1]
 
-print(f"I: Success! All graphs saved to: {OUTPUT_DIR}")
+if len(T_clean) > 10:
+    grad = np.gradient(f_clean, T_clean)
+    abs_grad = savgol_filter(np.abs(grad), 11, 2) if len(grad) > 11 else np.abs(grad)
+    ax.plot(T_clean, abs_grad, color='#333333', lw=3)
+    ax.fill_between(T_clean, 0, abs_grad, color='gray', alpha=0.2)
+    ax.set_title("Transformation Rate |df/dT|", fontweight='bold', fontsize=20)
+else:
+    ax.text(0.5, 0.5, "Insufficient Data", ha='center', fontsize=18)
+
+ax.set_xlabel("Temperature (K)", fontweight='bold')
+ax.grid(True, alpha=0.4)
+ax.invert_xaxis()
+
+plt.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.05, wspace=0.25, hspace=0.25)
+plt.savefig(f"{OUTPUT_DIR}/MASTER_DASHBOARD_FULL.png", dpi=300)
+
+# ==============================================================================
+# 5. TRANSFORMATION CALCULATOR
+# ==============================================================================
+print("\nI: Calculating Critical Temperatures...")
+
+f_min, f_max = np.min(arr[:, 1]), np.max(arr[:, 1])
+f_range = f_max - f_min
+
+def get_temp_at_frac(T_arr, f_arr, threshold, mode='falling'):
+    target = f_min + (threshold * f_range)
+    f_sm = savgol_filter(f_arr, 11, 3) if len(f_arr) > 11 else f_arr
+    if mode == 'falling': 
+        idx = np.where(f_sm <= target)[0]
+        return T_arr[idx[0]] if len(idx) > 0 else None
+    else: 
+        idx = np.where(f_sm >= target)[0]
+        return T_arr[idx[0]] if len(idx) > 0 else None
+
+As = get_temp_at_frac(heat[:,0], heat[:,1], 0.05, 'rising')
+Af = get_temp_at_frac(heat[:,0], heat[:,1], 0.95, 'rising')
+Ms = get_temp_at_frac(cool[:,0], cool[:,1], 0.95, 'falling')
+Mf = get_temp_at_frac(cool[:,0], cool[:,1], 0.05, 'falling')
+
+print("-" * 40)
+print(f"PHASE TRANSFORMATION REPORT")
+print("-" * 40)
+print(f"As: {As:.1f} K" if As else "As: Not Detected")
+print(f"Af: {Af:.1f} K" if Af else "Af: Not Detected")
+print(f"Ms: {Ms:.1f} K" if Ms else "Ms: Not Detected")
+print(f"Mf: {Mf:.1f} K" if Mf else "Mf: Not Detected")
+print("-" * 40)
+
+# Verification Plot
+fig = plt.figure(figsize=(14, 12))
+ax = plt.gca()
+yc_sm = savgol_filter(cool[:,1], 11, 3) if len(cool) > 11 else cool[:,1]
+yh_sm = savgol_filter(heat[:,1], 11, 3) if len(heat) > 11 else heat[:,1]
+
+ax.plot(cool[:,0], cool[:,1], color=C_COOL_LINE, alpha=0.2, lw=1)
+ax.plot(heat[:,0], heat[:,1], color=C_HEAT_LINE, alpha=0.2, lw=1)
+ax.plot(cool[:,0], yc_sm, color=C_COOL_LINE, lw=4, label='Cooling')
+ax.plot(heat[:,0], yh_sm, color=C_HEAT_LINE, lw=4, label='Heating')
+
+if Ms: ax.plot(Ms, f_min + 0.95*f_range, 'o', color=C_COOL_LINE, ms=12, mec='k', label=f'Ms ({Ms:.0f}K)')
+if Mf: ax.plot(Mf, f_min + 0.05*f_range, 'X', color=C_COOL_LINE, ms=12, mec='k', label=f'Mf ({Mf:.0f}K)')
+if As: ax.plot(As, f_min + 0.05*f_range, 'o', color=C_HEAT_LINE, ms=12, mec='k', label=f'As ({As:.0f}K)')
+if Af: ax.plot(Af, f_min + 0.95*f_range, 'X', color=C_HEAT_LINE, ms=12, mec='k', label=f'Af ({Af:.0f}K)')
+
+ax.set_title("Transformation Temperatures Verification", fontweight='bold', fontsize=24)
+ax.set_xlabel("Temperature (K)", fontweight='bold')
+ax.set_ylabel("Austenite Fraction", fontweight='bold')
+ax.legend(fontsize=16)
+ax.grid(True, alpha=0.5)
+
+plt.savefig(f"{OUTPUT_DIR}/Transformation_Verification.png", dpi=300)
+print(f"I: Saved plots to {OUTPUT_DIR}")
