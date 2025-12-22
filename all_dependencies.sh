@@ -124,6 +124,8 @@ sudo apt-get install -y --no-install-recommends \
     gcc \
     make \
     pkg-config \
+    libopengl0 \
+    libegl1 \
     libopenmpi-dev \
     openmpi-bin \
     libblas-dev \
