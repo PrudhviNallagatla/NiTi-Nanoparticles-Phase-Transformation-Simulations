@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- CONFIG ---
+# Configurations
 PROJECT_ROOT="/home/rimuru/workspace"
 LAMMPS_BIN="/usr/local/bin/lmp"
 
@@ -64,7 +64,7 @@ for datafile in "${DATA_FILES[@]}"; do
 done
 
 # ----------------------------
-# 3) SE (Superelasticity) - MAIN GOAL
+# 3) SE (Superelasticity)
 # ----------------------------
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
@@ -75,7 +75,6 @@ for datafile in "${DATA_FILES[@]}"; do
   
   mkdir -p "${dir}/restarts"
   
-  # Safety Check: Ensure the thermal cycle actually finished stage 4
   if [[ ! -f "${restart_hi}" ]]; then
     echo "CRITICAL ERROR: High-T restart file (stage4_end) not found for ${name}. Cannot run SE."
     exit 1
@@ -85,7 +84,6 @@ for datafile in "${DATA_FILES[@]}"; do
     echo ">>> Skipping SE (Found)"
   else
     echo ">>> Running SE ${name}"
-    # VISIBLE OUTPUT: Uses | tee to show progress
     INPUT_DATA="unused" OUTPUT_DIR="${dir}" RESTART_DIR="${dir}/restarts" \
     THERMAL_RESTART="${restart_hi}" \
     POT_LIB="${POT_LIB}" POT_FILE="${POT_FILE}" SEED="42" \

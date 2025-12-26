@@ -1,85 +1,97 @@
 #!/bin/bash
 # ==========================================================================
-# ROBUST CHARACTERIZATION RUNNER (IQ 180 VERSION)
-# ==========================================================================
-# PURPOSE: Automates minimization and thermal cycling with crash recovery.
-# DEPENDENCIES: 
-#   - src/lmps/minimize.lmp (Standard Minimization)
-#   - src/lmps/thermal_cycle.lmp (The Robust Cycle we just created)
+# AUTOMATED THERMAL CYCLING WORKFLOW WITH CRASH RECOVERY
+# Purpose: Complete pipeline from raw structure → minimization → thermal characterization
+# Features: Auto-restart from checkpoints, dynamic resource allocation, progress tracking
 # ==========================================================================
 
-set -euo pipefail
+set -euo pipefail  # Exit on error, undefined variables, or pipe failures
 
 # ============================================
-# 1. CONFIGURATION
+# 1. PROJECT CONFIGURATION
 # ============================================
+
+# Input structures to process (add/remove as needed)
 DATA_FILES=(
     "/home/rimuru/workspace/data/structures/niti_10nm_Ni50_single_crystal.data"
 )
 
 PROJECT_ROOT="/home/rimuru/workspace"
 LAMMPS_BIN="/usr/local/bin/lmp"
-SEED=42
+SEED=42  # Random seed for reproducible velocity initialization
 
-# Potential Files
+# MEAM Potential Files (Ni-Ti binary system)
 POT_LIB="/home/rimuru/workspace/potentials/library.meam"
 POT_FILE="/home/rimuru/workspace/potentials/NiTi.meam"
 
-# Hardware Detection
+# Hardware Detection (used for automatic parallelization)
 TOTAL_CORES=$(nproc)
 TOTAL_MEM_GB=$(awk '/MemTotal/ {printf "%.0f\n", $2/1024/1024}' /proc/meminfo)
 
 # ============================================
-# 2. DYNAMIC PERFORMANCE SETTINGS
+# 2. DYNAMIC PERFORMANCE OPTIMIZATION
+# Purpose: Balance MPI ranks vs OpenMP threads based on available hardware
+# Strategy: MEAM potentials benefit from hybrid parallelization
 # ============================================
-# Logic: Balance MPI ranks vs OpenMP threads based on core count
-echo "INFO: Total cores detected: ${TOTAL_CORES}"
+echo "INFO: Detected ${TOTAL_CORES} CPU cores, ${TOTAL_MEM_GB} GB RAM"
 
 if [[ ${TOTAL_CORES} -ge 16 ]]; then
-    # 16+ Cores: 8 MPI Ranks x 2 OpenMP Threads (Good for MEAM)
+    # High-end system: Hybrid MPI+OpenMP for best MEAM performance
     export OMP_NUM_THREADS=2
     MPI_RANKS=8
-    echo "INFO: Using 16+ core profile (MPI_RANKS=8, OMP_NUM_THREADS=2)"
+    echo "INFO: High-performance profile: 8 MPI ranks × 2 OpenMP threads"
     
 elif [[ ${TOTAL_CORES} -eq 8 ]]; then
-    # 8 Cores: 8 MPI Ranks x 1 OpenMP Thread (Standard)
+    # Standard workstation: Pure MPI (simpler, more stable)
     export OMP_NUM_THREADS=1
     MPI_RANKS=8
-    echo "INFO: Using 8-core profile (MPI_RANKS=8, OMP_NUM_THREADS=1)"
+    echo "INFO: Standard profile: 8 MPI ranks × 1 OpenMP thread"
     
 elif [[ ${TOTAL_CORES} -eq 4 ]]; then
-    # 4 Cores: 2 MPI Ranks x 2 OpenMP Threads (Safe fallback)
+    # Low-end system: Conservative hybrid approach
     export OMP_NUM_THREADS=2
     MPI_RANKS=2
-    echo "INFO: Using 4-core profile (MPI_RANKS=2, OMP_NUM_THREADS=2)"
+    echo "INFO: Low-resource profile: 2 MPI ranks × 2 OpenMP threads"
     
 else
-    # Fallback: Pure MPI
+    # Fallback: Use all cores as MPI ranks
     export OMP_NUM_THREADS=1
     MPI_RANKS=${TOTAL_CORES}
-    echo "INFO: Using fallback PURE MPI profile (MPI_RANKS=${TOTAL_CORES})"
+    echo "INFO: Fallback pure-MPI profile: ${TOTAL_CORES} MPI ranks"
 fi
 
 # ============================================
-# 3. PRE-FLIGHT CHECKS
+# 3. PRE-FLIGHT VALIDATION
+# Purpose: Catch configuration errors before wasting compute time
 # ============================================
 if [[ ! -x "${LAMMPS_BIN}" ]]; then
-    echo "ERROR: LAMMPS binary not found at ${LAMMPS_BIN}" >&2; exit 1
+    echo "ERROR: LAMMPS binary not found or not executable: ${LAMMPS_BIN}" >&2
+    exit 1
 fi
-if [[ ! -f "${POT_LIB}" || ! -f "${POT_FILE}" ]]; then
-    echo "ERROR: Potential files not found." >&2; exit 1
+
+if [[ ! -f "${POT_LIB}" ]]; then
+    echo "ERROR: MEAM library file missing: ${POT_LIB}" >&2
+    exit 1
+fi
+
+if [[ ! -f "${POT_FILE}" ]]; then
+    echo "ERROR: MEAM parameter file missing: ${POT_FILE}" >&2
+    exit 1
 fi
 
 cd "${PROJECT_ROOT}"
 mkdir -p logs
 
 # ============================================
-# 4. HELPER FUNCTIONS
+# 4. UTILITY FUNCTIONS
 # ============================================
+
+# Extract base filename without extension
 get_base_name() {
     basename "$1" .data
 }
 
+# Parse atom count from LAMMPS data file header
 get_atom_count() {
     local datafile=$1
     [[ ! -f "${datafile}" ]] && echo "0" && return
@@ -88,52 +100,74 @@ get_atom_count() {
     echo "${count:-0}"
 }
 
+# Estimate memory requirement (rough heuristic: ~500 bytes/atom)
 estimate_memory() {
     local atoms=$1
-    # Returns MB (integer) - simple safety buffer estimation
+    # Returns memory in MB
     python3 -c "print(max(1, int(${atoms} * 500 / 1024 / 1024) + 1))"
 }
 
 # ============================================
-# STEP 1: ANALYZE STRUCTURES
+# STEP 1: STRUCTURE ANALYSIS
+# Purpose: Preview computational requirements before starting
 # ============================================
 echo ""
-echo "[1/3] Analyzing structures..."
+echo "========================================"
+echo "[1/3] ANALYZING INPUT STRUCTURES"
+echo "========================================"
+
 for datafile in "${DATA_FILES[@]}"; do
     if [[ ! -f "${datafile}" ]]; then
-        echo "WARNING: File not found: ${datafile}" >&2; continue
+        echo "WARNING: File not found (will skip): ${datafile}" >&2
+        continue
     fi
+    
     structure_name=$(get_base_name "${datafile}")
     atoms=$(get_atom_count "${datafile}")
     mem=$(estimate_memory "${atoms}")
-    echo "   • ${structure_name}"
-    echo "     Atoms: ${atoms} | RAM: ~${mem} MB | MPI Ranks: ${MPI_RANKS}"
+    
+    echo "Structure: ${structure_name}"
+    echo "  ├─ Atoms:     ${atoms}"
+    echo "  ├─ Est. RAM:  ~${mem} MB"
+    echo "  └─ MPI Ranks: ${MPI_RANKS}"
+    echo ""
 done
 
 # ============================================
-# STEP 2: MINIMIZATION
+# STEP 2: ENERGY MINIMIZATION
+# Purpose: Relax atomic positions to stable configuration
+# Strategy: Skip if already completed (idempotent design)
 # ============================================
 echo ""
-echo "[2/3] Minimizing structures (sequentially)..."
+echo "========================================"
+echo "[2/3] ENERGY MINIMIZATION PHASE"
+echo "========================================"
+echo "Method: Multi-stage (SD → Anneal → FIRE → CG)"
+echo "Target: Fmax < 0.01 meV/Å"
+echo "========================================"
+echo ""
+
 for datafile in "${DATA_FILES[@]}"; do
     [[ ! -f "${datafile}" ]] && continue
+    
     structure_name=$(get_base_name "${datafile}")
     
+    # Output directory for this structure
     outdir="data/raw_output/${structure_name}/minimize"
-    marker="${outdir}/.minimize_complete"
-    output_check="${outdir}/final_minimized.data"  # Changed from minimized.data
+    marker="${outdir}/.minimize_complete"  # Completion flag
+    output_check="${outdir}/final_minimized.data"  # Expected output file
     
+    # Check if already completed
     if [[ -f "${marker}" ]]; then
-        echo "   ✓ ${structure_name} (already done)"
+        echo "✓ ${structure_name} (already minimized, skipping)"
         continue
     fi
     
     mkdir -p "${outdir}"
-    echo "   → Running ${structure_name}..."
+    echo "→ Minimizing ${structure_name}..."
     logfile="logs/min_${structure_name}.log"
 
-    # Run LAMMPS Minimize
-    # NOTE: Ensure src/lmps/minimize.lmp exists and produces 'minimized.data'
+    # Execute LAMMPS minimization
     STRUCTURE_FILE="${datafile}" \
     OUTPUT_DIR="${outdir}" \
     POT_LIB="${POT_LIB}" \
@@ -142,59 +176,87 @@ for datafile in "${DATA_FILES[@]}"; do
         -in src/lmps/minimize.lmp \
         2>&1 | tee "${logfile}"
     
+    # Validate output
     if [[ -f "${output_check}" ]]; then
-        touch "${marker}"
-        echo "           ✓ ${structure_name} complete."
+        touch "${marker}"  # Mark as complete
+        echo "  ✓ Minimization complete"
+        echo ""
     else
-        echo "           ✗ ${structure_name} FAILED (check ${logfile})" >&2
+        echo "  ✗ FAILED: Output file not created" >&2
+        echo "  Check log: ${logfile}" >&2
         exit 1
     fi
 done
 
 # ============================================
-# STEP 3: THERMAL CYCLING (The Characterization)
+# STEP 3: THERMAL CYCLING CHARACTERIZATION
+# Purpose: Measure transformation temperatures (Ms, Mf, As, Af)
+# Method: Cool → Heat cycle with continuous phase monitoring
+# Features: Auto-resume from latest checkpoint on crash/restart
 # ============================================
 echo ""
-echo "[3/3] Running Thermal Cycle (sequentially)..."
+echo "========================================"
+echo "[3/3] THERMAL CYCLING CHARACTERIZATION"
+echo "========================================"
+echo "Temperature range: 200 K → 500 K → 200 K"
+echo "Heating/Cooling rate: 0.35 K/ps"
+echo "Output: Hysteresis curve (T vs Austenite Fraction)"
+echo "========================================"
+echo ""
+
 for datafile in "${DATA_FILES[@]}"; do
     [[ ! -f "${datafile}" ]] && continue
+    
     structure_name=$(get_base_name "${datafile}")
 
-    # Define Input/Output paths
-    indata="data/raw_output/${structure_name}/minimize/final_minimized.data"  # Changed from minimized.data
+    # Define paths
+    indata="data/raw_output/${structure_name}/minimize/final_minimized.data"
     outdir="data/raw_output/${structure_name}/thermal_cycle"
     restart_dir="${outdir}/restart_files"
     
-    marker="${outdir}/.thermal_cycle_complete"
-    # We check for the final stage restart as proof of completion
-    output_check="${restart_dir}/restart.stage4_end"
+    marker="${outdir}/.thermal_cycle_complete"  # Completion flag
+    output_check="${restart_dir}/restart.stage4_end"  # Final stage checkpoint
     logfile="logs/thermal_${structure_name}.log"
 
+    # Check if already completed
     if [[ -f "${marker}" ]]; then
-        echo "   ✓ ${structure_name} (thermal cycle already done)"
+        echo "✓ ${structure_name} (thermal cycle already complete)"
         continue
     fi
 
+    # Validate input exists
     if [[ ! -f "${indata}" ]]; then
-        echo "ERROR: Missing minimized input data: ${indata}" >&2
+        echo "ERROR: Minimized structure not found: ${indata}" >&2
+        echo "  Run minimization step first!" >&2
         exit 1
     fi
 
     mkdir -p "${outdir}" "${restart_dir}"
 
-    # --- ROBUST RESTART LOGIC ---
-    # Look for the newest restart file (stage_end or rolling)
-    latest_restart=$(ls -1t "${restart_dir}"/restart.stage*_end "${restart_dir}"/restart.rolling.* 2>/dev/null | head -n 1 || true)
+    # =====================================
+    # SMART RESTART LOGIC
+    # Purpose: Resume from most recent checkpoint to recover from crashes
+    # Strategy: Look for stage_end (definitive) first, then rolling backups
+    # =====================================
+    
+    # Find most recent restart file (sorted by modification time)
+    latest_restart=$(ls -1t \
+        "${restart_dir}"/restart.stage*_end \
+        "${restart_dir}"/restart.rolling.* \
+        2>/dev/null | head -n 1 || true)
 
     if [[ -n "${latest_restart}" ]]; then
-        echo "   ↳ Found restart checkpoint: $(basename "${latest_restart}")"
+        # Resume from checkpoint
+        echo "→ ${structure_name}: Resuming from checkpoint"
+        echo "  Restart file: $(basename "${latest_restart}")"
         START_CMD="read_restart ${latest_restart}"
     else
-        echo "   ↳ Starting fresh from minimized structure..."
+        # Start fresh
+        echo "→ ${structure_name}: Starting thermal cycle from minimized structure"
         START_CMD="read_data ${indata}"
     fi
 
-    # Run LAMMPS Thermal Cycle
+    # Execute LAMMPS thermal cycle
     OUTPUT_DIR="${outdir}" \
     RESTART_DIR="${restart_dir}" \
     START_CMD="${START_CMD}" \
@@ -205,28 +267,26 @@ for datafile in "${DATA_FILES[@]}"; do
         -in src/lmps/thermal_cycle.lmp \
         2>&1 | tee "${logfile}"
 
+    # Validate completion
     if [[ -f "${output_check}" ]]; then
-        touch "${marker}"
-        echo "           ✓ ${structure_name} thermal cycle complete."
+        touch "${marker}"  # Mark as complete
+        echo "  ✓ Thermal cycle complete"
+        echo "  Output: ${outdir}/hysteresis_full.txt"
+        echo ""
     else
-        echo "           ✗ ${structure_name} FAILED (check ${logfile})" >&2
+        echo "  ✗ FAILED: Simulation did not complete all stages" >&2
+        echo "  Check log: ${logfile}" >&2
+        echo "  To retry: Re-run this script (will auto-resume)" >&2
         exit 1
     fi
 done
 
-# ============================================
-# SUMMARY & NEXT STEPS
-# ============================================
 echo ""
-echo "=========================================="
-echo "✓ PART 1 (CHARACTERIZATION) COMPLETE"
-echo "=========================================="
-echo "ACTION REQUIRED:"
-echo "1. Plot the Hysteresis Loop from:"
-echo "   data/raw_output/<structure_name>/thermal_cycle/hysteresis_full.txt"
-echo "   (Columns: 4=Temp_global, 5=Temp_core, 6=PE, 13=Frac_Aus)"
-echo ""
-echo "2. Identify transformation temperatures (Mf, Af)."
-echo "3. Update 'src/lmps/sme_deformation.lmp' with correct temperatures."
-echo "4. Run ./scripts/run_02_deform.sh"
-echo "=========================================="
+echo "========================================"
+echo "✓ ALL SIMULATIONS COMPLETE"
+echo "========================================"
+echo "Next steps:"
+echo "1. Analyze hysteresis curves: data/raw_output/*/thermal_cycle/hysteresis_full.txt"
+echo "2. Extract transformation temperatures (Ms, Mf, As, Af)"
+echo "3. Visualize trajectories: ovito data/raw_output/*/thermal_cycle/dump.cycle.*.gz"
+echo "========================================"

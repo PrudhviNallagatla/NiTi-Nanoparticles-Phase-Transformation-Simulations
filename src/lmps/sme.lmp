@@ -1,69 +1,75 @@
-# filepath: /home/rimuru/workspace/src/lmps/sme.lmp
-# GOAL: Journal-Grade NiTi Nanoparticle SME (Fixed Output Syntax)
-# REVISION: v11 (Solved the 'yes' file bug)
+# ====================================================================
+#  SHAPE MEMORY EFFECT SIMULATION FOR NiTi NANOPARTICLES
+#  Purpose: Demonstrate strain recovery via thermal cycling
+#  Physics: Deform at low T (martensite) → Heat → Recover shape (austenite)
+#  Key Output: Residual strain vs temperature during heating phase
+# ====================================================================
 
 clear
-units       metal
+units       metal          # eV, Å, ps, K
 dimension   3
-boundary    s s s
+boundary    s s s          # Non-periodic (isolated nanoparticle)
 atom_style  atomic
 
 # ==========================================================================
-# 1. SETUP & INITIALIZATION
+# 1. ENVIRONMENT SETUP & INITIALIZATION
 # ==========================================================================
-variable input_data    getenv INPUT_DATA
-variable output_dir    getenv OUTPUT_DIR
-variable restart_dir   getenv RESTART_DIR
-variable pot_lib       getenv POT_LIB
-variable pot_file      getenv POT_FILE
-variable seed          getenv SEED
+variable input_data    getenv INPUT_DATA    # Initial structure file
+variable output_dir    getenv OUTPUT_DIR    # Results directory
+variable restart_dir   getenv RESTART_DIR   # Checkpoint storage
+variable pot_lib       getenv POT_LIB       # MEAM library
+variable pot_file      getenv POT_FILE      # MEAM parameters
+variable seed          getenv SEED          # Random number seed
 
-# Restart cadence
-variable restart_every equal 10000
+variable restart_every equal 10000          # Checkpoint frequency (steps)
 
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
 
-# --- LOAD BOX FIRST ---
-variable start_cmd getenv START_CMD
+# --- LOAD ATOMIC STRUCTURE ---
+variable start_cmd getenv START_CMD         # Command to load structure (read_data or read_restart)
 ${start_cmd}
 
-# --- SMART TIMESTEP RESET ---
+# --- SMART TIMESTEP MANAGEMENT ---
+# Check if reference state file exists (indicates continuing run)
 variable param_file string "${output_dir}/sme_ref.lmp"
 variable has_ref equal is_file(${param_file})
 
-# IF NO REFERENCE FILE -> Fresh Start -> Reset Time to 0
+# Reset timestep only on fresh start
 if "${has_ref} == 0" then "reset_timestep 0"
-if "${has_ref} == 1" then "print '>>> Resuming existing SME run...'"
+if "${has_ref} == 1" then "print '>>> Resuming from existing reference state...'"
 
+# --- INTERATOMIC POTENTIAL (Ni-Ti MEAM) ---
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
-neighbor    2.0 bin
+neighbor    2.0 bin                    # Neighbor list cutoff buffer
 neigh_modify delay 10 every 1 check yes
 
-comm_style tiled
-fix bal all balance 5000 1.05 rcb
+comm_style tiled                       # Spatial decomposition for MPI
+fix bal all balance 5000 1.05 rcb     # Dynamic load balancing (every 5000 steps, 5% imbalance tolerance)
 
-timestep    0.002
+timestep    0.002                      # 2 fs integration timestep
 
 # ==========================================================================
-# 2. PROTOCOL & PHYSICS
+# 2. SHAPE MEMORY PROTOCOL PARAMETERS
 # ==========================================================================
-variable T_low      equal 200.0
-variable T_high     equal 500.0
-variable tdamp      equal 100.0*dt
+variable T_low      equal 200.0        # Martensite stable temperature (K)
+variable T_high     equal 500.0        # Austenite stable temperature (K)
+variable tdamp      equal 100.0*dt     # Thermostat damping time (0.2 ps)
 
-variable strain_max equal 0.10
-variable load_time  equal 2000.0
+variable strain_max equal 0.10         # Maximum deformation (10% compression)
+variable load_time  equal 2000.0       # Loading duration (ps)
 variable load_steps equal round(v_load_time/dt)
 
-variable cool_steps   equal 50000
-variable hold_low     equal 30000
-variable unload_steps equal 20000
-variable heat_steps   equal 50000
-variable hold_high    equal 20000
+# Stage durations (in steps)
+variable cool_steps   equal 50000      # Cooling phase: 100 ps
+variable hold_low     equal 30000      # Hold at low T: 60 ps
+variable unload_steps equal 20000      # Unloading: 40 ps
+variable heat_steps   equal 50000      # Heating phase: 100 ps
+variable hold_high    equal 20000      # Final hold: 40 ps
 
+# Absolute timestep milestones for each stage
 variable end0 equal v_cool_steps
 variable end1 equal v_end0+v_hold_low
 variable end2 equal v_end1+v_load_steps
@@ -72,88 +78,98 @@ variable end4 equal v_end3+v_heat_steps
 variable end5 equal v_end4+v_hold_high
 
 # ==========================================================================
-# 3. DIAGNOSTICS
+# 3. STRUCTURAL & THERMODYNAMIC DIAGNOSTICS
 # ==========================================================================
 
-# --- A. Time Tracking (CPU) ---
-variable t_cpu      equal cpu
+# --- A. CPU TIME TRACKING ---
+variable t_cpu      equal cpu          # Wall clock time (seconds)
 variable cpu_hours  equal v_t_cpu/3600.0
 
-# --- B. Core/Surface ---
-compute com all com
+# --- B. PARTICLE GEOMETRY: Core vs Surface Definition ---
+compute com all com                    # Center of mass
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
 
-variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
-compute r2max all reduce max v_rsq
-variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
+variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2  # Distance² from COM
+compute r2max all reduce max v_rsq                      # Maximum radius²
+variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)    # Approximate spherical volume
 
+# Core = inner 80% by volume
 variable rcut_sq equal 0.64*c_r2max
 variable core_mask atom "v_rsq < v_rcut_sq"
-group core dynamic all var core_mask every 1000
+group core dynamic all var core_mask every 1000         # Update group membership periodically
 
-# --- C. Thermodynamics ---
-compute T_core core temp
-compute pe_atom all pe/atom
-compute ke_atom all ke/atom
+# --- C. THERMODYNAMIC STATE ---
+compute T_core core temp               # Core temperature (excludes surface atoms)
+compute pe_atom all pe/atom            # Per-atom potential energy
+compute ke_atom all ke/atom            # Per-atom kinetic energy
 compute H_all all reduce sum c_pe_atom c_ke_atom
-variable H_total_eV equal c_H_all[1]+c_H_all[2]
+variable H_total_eV equal c_H_all[1]+c_H_all[2]  # Total enthalpy
 
-# --- D. Crystallography ---
-compute csym all centro/atom bcc
-compute ack  all ackland/atom
-compute cna  all cna/atom 3.0
+# --- D. PHASE IDENTIFICATION ---
+compute csym all centro/atom bcc       # Centrosymmetry (defect detection)
+compute ack  all ackland/atom          # Ackland classification (BCC=3, FCC=1, HCP=2)
+compute cna  all cna/atom 3.0          # Common neighbor analysis
+
+# Austenite (BCC) fraction in core
 variable is_austenite atom "c_ack == 3"
 compute n_aus core reduce sum v_is_austenite
 variable n_core    equal "count(core)"
-variable frac_aus equal "c_n_aus/(v_n_core+1.0e-6)"
+variable frac_aus equal "c_n_aus/(v_n_core+1.0e-6)"  # Avoid division by zero
 
-# --- E. Mechanical Stress ---
-compute st all stress/atom NULL
-compute Szz all reduce sum c_st[3]
-variable sigma_zz_GPa equal -(c_Szz/(v_Vol_total+1.0e-12))*1.0e-4
+# --- E. STRESS STATE ---
+compute st all stress/atom NULL        # Per-atom stress tensor
+compute Szz all reduce sum c_st[3]     # Total axial stress
+variable sigma_zz_GPa equal -(c_Szz/(v_Vol_total+1.0e-12))*1.0e-4  # Convert to GPa
 
+# von Mises stress (shear indicator)
 variable vm_atom atom sqrt(0.5*((c_st[1]-c_st[2])^2+(c_st[2]-c_st[3])^2+(c_st[3]-c_st[1])^2+6*(c_st[4]^2+c_st[5]^2+c_st[6]^2)))
+# Hydrostatic pressure
 variable p_atom  atom -(c_st[1]+c_st[2]+c_st[3])/3.0
 
-# --- F. Shape & Strain ---
-compute gyr all gyration
+# --- F. SHAPE & STRAIN MEASUREMENT ---
+compute gyr all gyration               # Radius of gyration
 variable Rg    equal c_gyr
-compute zmin all reduce min z
+compute zmin all reduce min z          # Particle boundaries
 compute zmax all reduce max z
-variable Lz equal (c_zmax-c_zmin)
+variable Lz equal (c_zmax-c_zmin)      # Current axial length
 
-# SAFE INIT
+# Reference state (initialized safely, will be captured later)
 if "${has_ref} == 0" then &
   "variable Lz_ref equal 0.0" &
   "variable z_hi0  equal 0.0" &
   "variable z_lo0  equal 0.0"
 
+# Load existing reference if resuming
 if "${has_ref} == 1" then &
-  "print '>>> Loading Reference...'" &
+  "print '>>> Loading saved reference state...'" &
   "include ${param_file}"
 
+# Engineering strain
 variable strain equal "(v_Lz_ref>0)*(v_Lz-v_Lz_ref)/(v_Lz_ref+1.0e-12)"
 
-compute disp all displace/atom
+# --- G. ATOMIC DISPLACEMENT (SME Recovery Metric) ---
+compute disp all displace/atom         # Displacement from initial positions
 variable disp_mag atom sqrt(c_disp[1]^2+c_disp[2]^2+c_disp[3]^2)
-compute disp_rms all reduce ave v_disp_mag
+compute disp_rms all reduce ave v_disp_mag  # RMS displacement
 
 # ==========================================================================
-# 4. OUTPUTS (FIXED SYNTAX)
+# 4. OUTPUT CONFIGURATION
 # ==========================================================================
 
-# 4.1. Terminal Output
+# --- 4.1. Terminal Output ---
 thermo 1000
 thermo_style custom step temp c_T_core v_strain v_sigma_zz_GPa v_frac_aus v_cpu_hours
 
-# 4.2. File Output (REMOVED 'append yes' to fix the file bug)
+# --- 4.2. File Output ---
+# Write detailed metrics every 500 steps
 fix out all print 500 &
 "$(step) $(temp) $(c_T_core) $(v_strain) $(v_sigma_zz_GPa) $(v_frac_aus) $(v_H_total_eV) $(v_Rg) $(c_disp_rms) $(v_cpu_hours)" &
 file ${output_dir}/sme_data.txt screen no &
 title "# Step T_Global T_Core Strain SigmaZZ(GPa) Frac_Aus H_Total(eV) Rg(A) Disp_RMS(A) CPU_Hrs"
 
+# Full atomic trajectory every 10 ps
 dump 1 all custom 5000 ${output_dir}/dump.sme.*.gz &
     id type x y z &
     c_pe_atom c_csym c_ack c_cna &
@@ -162,30 +178,45 @@ dump 1 all custom 5000 ${output_dir}/dump.sme.*.gz &
     c_disp[1] c_disp[2] c_disp[3]
 dump_modify 1 sort id element Ni Ti
 
+# Alternating restart files
 restart ${restart_every} ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
 # ==========================================================================
-# 5. EXECUTION
+# 5. SHAPE MEMORY CYCLE EXECUTION
 # ==========================================================================
+
+# Initialize velocities only on fresh start
 if "$(step) == 0" then "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
+
+# Remove COM drift throughout simulation
 fix mom all momentum 100 linear 1 1 1 angular
 
-print ">>> STARTING SME PROTOCOL..."
+print ">>> STARTING SHAPE MEMORY EFFECT PROTOCOL..."
 
-# --- STAGE 0 & 1: COOLING ---
-print ">>> STAGE 0: Cooling to ${T_low} K"
+# ==========================================================================
+# STAGE 0: COOLING (Austenite → Martensite)
+# Purpose: Transform to low-temperature phase before deformation
+# ==========================================================================
+print ">>> STAGE 0: Cooling to ${T_low} K (A→M transformation)"
 fix nvt all nvt temp ${T_high} ${T_low} ${tdamp}
 run ${end0} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage0_end
 
-print ">>> STAGE 1: Holding at ${T_low} K"
+# ==========================================================================
+# STAGE 1: HOLD AT LOW TEMPERATURE
+# Purpose: Equilibrate martensite phase before loading
+# ==========================================================================
+print ">>> STAGE 1: Holding at ${T_low} K (martensite equilibration)"
 fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}
 run ${end1} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage1_end
 
-# --- CAPTURE REFERENCE ---
+# ==========================================================================
+# CAPTURE REFERENCE STATE
+# Purpose: Define strain=0 configuration in martensite phase
+# ==========================================================================
 if "$(v_Lz_ref) < 0.001" then &
   "variable current_Lz equal v_Lz" &
   "variable current_zhi equal c_zmax" &
@@ -200,32 +231,43 @@ if "$(v_Lz_ref) < 0.001" then &
   "print 'variable Lz_ref equal ${current_Lz}' append ${param_file}" &
   "print 'variable z_hi0  equal ${current_zhi}' append ${param_file}" &
   "print 'variable z_lo0  equal ${current_zlo}' append ${param_file}" &
-  "print '>>> REFERENCE STATE SAVED'"
+  "print '>>> REFERENCE STATE SAVED: Lz = ${current_Lz} Å'"
 
-# --- STAGE 2: LOADING (BUFFERED) ---
-variable buffer equal 5.0
+# ==========================================================================
+# STAGE 2: LOADING IN MARTENSITE
+# Purpose: Deform particle while in low-temperature phase
+# Method: Moving harmonic walls with buffer zone
+# ==========================================================================
+variable buffer equal 5.0              # Buffer distance beyond particle surface (Å)
 variable start_step equal $(v_end1)
-variable ramp       equal (step-v_start_step)/${load_steps}
+variable ramp       equal (step-v_start_step)/${load_steps}  # Linear ramp [0,1]
 
-variable compress_dist equal (v_Lz_ref*v_strain_max*0.5)
-variable travel_dist   equal (v_buffer+v_compress_dist)
+# Calculate wall motion parameters
+variable compress_dist equal (v_Lz_ref*v_strain_max*0.5)  # Compression per side
+variable travel_dist   equal (v_buffer+v_compress_dist)    # Total wall travel
 
+# Wall position functions
 variable pos_hi_load equal (v_z_hi0+v_buffer)-(v_travel_dist*v_ramp)
 variable pos_lo_load equal (v_z_lo0-v_buffer)+(v_travel_dist*v_ramp)
 
-print ">>> STAGE 2: Loading (Compression with Buffer)"
+print ">>> STAGE 2: Loading (deforming martensite)"
 fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}
 fix wall_hi all wall/harmonic zhi v_pos_hi_load 1000.0 0.0 2.5 units box
 fix wall_lo all wall/harmonic zlo v_pos_lo_load 1000.0 0.0 2.5 units box
 run ${end2} upto
 write_restart ${restart_dir}/restart.stage2_end
 
-# --- STAGE 3: UNLOADING (CONTROLLED) ---
-print ">>> STAGE 3: Unloading (Controlled Release)"
+# ==========================================================================
+# STAGE 3: UNLOADING (Remove External Load)
+# Purpose: Release mechanical constraint while maintaining deformation
+# Method: Gradually retract walls back to buffered position
+# ==========================================================================
+print ">>> STAGE 3: Unloading (removing external stress)"
 
 variable start_unload equal $(v_end2)
 variable ramp_unload  equal (step-v_start_unload)/${unload_steps}
 
+# Reverse wall motion
 variable pos_hi_unload equal (v_z_hi0-v_compress_dist)+(v_travel_dist*v_ramp_unload)
 variable pos_lo_unload equal (v_z_lo0+v_compress_dist)-(v_travel_dist*v_ramp_unload)
 
@@ -238,19 +280,29 @@ unfix wall_lo
 unfix nvt
 write_restart ${restart_dir}/restart.stage3_end
 
-# --- STAGE 4: HEATING ---
-print ">>> STAGE 4: Heating to ${T_high} K"
+# ==========================================================================
+# STAGE 4: HEATING (Shape Recovery via Reverse Transformation)
+# Purpose: Trigger M→A transformation to recover original shape
+# Key Observation: Residual strain should decrease as temperature increases
+# ==========================================================================
+print ">>> STAGE 4: Heating to ${T_high} K (M→A recovery)"
 fix nvt all nvt temp ${T_low} ${T_high} ${tdamp}
 run ${end4} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage4_end
 
-# --- STAGE 5: FINAL HOLD ---
-print ">>> STAGE 5: Final Hold"
+# ==========================================================================
+# STAGE 5: FINAL HOLD IN AUSTENITE
+# Purpose: Allow complete shape recovery and equilibration
+# ==========================================================================
+print ">>> STAGE 5: Final hold at ${T_high} K (austenite equilibration)"
 fix nvt all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${end5} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage5_end
 
-print "SME CYCLE COMPLETE."
+# ==========================================================================
+# FINALIZATION
+# ==========================================================================
+print ">>> SHAPE MEMORY CYCLE COMPLETE"
 write_data ${output_dir}/final.data nocoeff

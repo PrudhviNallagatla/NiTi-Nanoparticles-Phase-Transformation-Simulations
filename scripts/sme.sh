@@ -8,7 +8,6 @@ LAMMPS_BIN="/usr/local/bin/lmp"
 # Inputs
 MINIMIZE_IN="${PROJECT_ROOT}/src/lmps/minimize.lmp"
 THERMAL_IN="${PROJECT_ROOT}/src/lmps/thermal_cycle.lmp"
-# SE_IN removed as we are focusing on SME
 SME_IN="${PROJECT_ROOT}/src/lmps/sme.lmp"
 
 POT_LIB="${PROJECT_ROOT}/potentials/library.meam"
@@ -52,7 +51,6 @@ for datafile in "${DATA_FILES[@]}"; do
   dir="${RAW_OUT_ROOT}/${name}/thermal_cycle"
   mkdir -p "${dir}/restart_files"
   
-  # We check for stage 2 end specifically because SME needs the Low Temp state
   if [[ -f "${dir}/restart_files/restart.stage2_end" ]]; then
     echo ">>> Skipping Thermal (Low Temp State Found)"
   else
@@ -65,7 +63,7 @@ for datafile in "${DATA_FILES[@]}"; do
 done
 
 # ----------------------------
-# 3) SME (Shape Memory Effect) - MAIN GOAL
+# 3) SME (Shape Memory Effect)
 # ----------------------------
 
 for datafile in "${DATA_FILES[@]}"; do
@@ -76,7 +74,6 @@ for datafile in "${DATA_FILES[@]}"; do
   
   mkdir -p "${dir}/restarts"
   
-  # Ensure the prerequisite exists before trying to run
   if [[ ! -f "${restart_lo}" ]]; then
     echo "CRITICAL ERROR: Thermal restart file not found for ${name}. Cannot run SME."
     exit 1
@@ -86,7 +83,6 @@ for datafile in "${DATA_FILES[@]}"; do
     echo ">>> Skipping SME (Found)"
   else
     echo ">>> Running SME ${name}"
-    # VISIBLE OUTPUT: Uses | tee
     INPUT_DATA="unused" OUTPUT_DIR="${dir}" RESTART_DIR="${dir}/restarts" \
     START_CMD="read_restart ${restart_lo}" \
     POT_LIB="${POT_LIB}" POT_FILE="${POT_FILE}" SEED="42" \

@@ -1,57 +1,57 @@
-# filepath: /home/rimuru/workspace/src/lmps/thermal_cycle.lmp
-# GOAL: Journal-Quality Thermal Hysteresis (Fixed Data Output + Restart Safety)
-# REVISION: v8 (Solved 'yes' bug, Enforced Append Mode for Restarts)
+# ====================================================================
+#  THERMAL HYSTERESIS SIMULATION FOR NiTi SHAPE MEMORY ALLOY
+#  Purpose: Measure martensitic transformation temperatures (Ms, Mf, As, Af)
+#  Method: Temperature cycling with continuous data logging
+#  Version: v8 (Restart-safe with append mode)
+# ====================================================================
 
 clear
-units       metal
+units       metal         # Energy: eV, Distance: Å, Time: ps, Temp: K
 dimension   3
-boundary    s s s   
+boundary    s s s         # Shrink-wrapped boundaries
 atom_style  atomic
 
-# --- CRITICAL: Comm Style must be defined BEFORE reading data ---
-comm_style  tiled
+# CRITICAL: Must define comm_style before reading data
+comm_style  tiled         # Efficient parallel communication
 
 # ==========================================================================
-# 1. ENVIRONMENT & VARIABLES
+# 1. PATHS AND PARAMETERS
 # ==========================================================================
-variable output_dir    getenv OUTPUT_DIR
-variable restart_dir   getenv RESTART_DIR
-variable pot_lib       getenv POT_LIB
-variable pot_file      getenv POT_FILE
-variable seed          getenv SEED
+variable output_dir    getenv OUTPUT_DIR    # Where to save trajectory/data
+variable restart_dir   getenv RESTART_DIR   # Checkpoint storage
+variable pot_lib       getenv POT_LIB       # MEAM library
+variable pot_file      getenv POT_FILE      # MEAM parameters
+variable seed          getenv SEED          # Random seed for reproducibility
 
-# Create directories
 shell mkdir -p "${output_dir}"
 shell mkdir -p "${restart_dir}"
 
-# --- Physics Parameters ---
-variable T_low      equal 200.0
-variable T_high     equal 500.0
-variable T_rate     equal 0.35      
+# --- THERMAL CYCLE DEFINITION ---
+variable T_low      equal 200.0       # Martensite stable temperature (K)
+variable T_high     equal 500.0       # Austenite stable temperature (K)
+variable T_rate     equal 0.35        # Heating/cooling rate (K/ps)
 
-# Damping: 0.2 ps is safe for phase transitions
-variable tdamp      equal 0.2
+variable tdamp      equal 0.2         # Thermostat damping time (ps)
 
-# --- Timing ---
-timestep     0.002
+# --- SIMULATION TIMING ---
+timestep     0.002                    # 2 fs timestep
 variable     dt_val      equal 0.002 
 variable     delta_T     equal (v_T_high-v_T_low)
 
-# Calculate steps needed for ramp
+# Calculate steps for temperature ramp
 variable     run_ramp    equal round(v_delta_T/v_T_rate/v_dt_val)
-variable     run_hold    equal 50000
+variable     run_hold    equal 50000  # 100 ps equilibration at each extreme
 
-# --- Milestone Steps (Absolute Time) ---
-variable     end_stage0  equal v_run_hold
-variable     end_stage1  equal v_end_stage0+v_run_ramp
-variable     end_stage2  equal v_end_stage1+v_run_hold
-variable     end_stage3  equal v_end_stage2+v_run_ramp
-variable     end_stage4  equal v_end_stage3+v_run_hold
+# Absolute timestep milestones for each stage
+variable     end_stage0  equal v_run_hold                      # Stage 0 end
+variable     end_stage1  equal v_end_stage0+v_run_ramp         # Stage 1 end
+variable     end_stage2  equal v_end_stage1+v_run_hold         # Stage 2 end
+variable     end_stage3  equal v_end_stage2+v_run_ramp         # Stage 3 end
+variable     end_stage4  equal v_end_stage3+v_run_hold         # Stage 4 end
 
 # ==========================================================================
-# 2. SETUP (The Crash-Proof Start)
+# 2. SMART RESTART - Resume from checkpoint or start fresh
 # ==========================================================================
-# Auto-detect restart files
 variable restart_exists equal is_file("${restart_dir}/restart.rolling.1")
 
 if "${restart_exists} > 0" then &
@@ -62,39 +62,44 @@ else &
   "variable start_cmd getenv START_CMD" &
   "${start_cmd}"
 
+# --- INTERATOMIC POTENTIAL (Ni-Ti MEAM) ---
 pair_style  meam
 pair_coeff  * * ${pot_lib} Ni Ti ${pot_file} Ni Ti
 
 neighbor    2.0 bin
 neigh_modify delay 10 every 1 check yes
 
-# Load Balancing
+# Dynamic load balancing for efficiency
 fix bal all balance 5000 1.05 rcb
 
 # ==========================================================================
-# 3. COMPUTATIONS 
+# 3. ANALYSIS COMPUTATIONS
 # ==========================================================================
-# --- A. Wall time ---
-variable t_cpu      equal cpu
-variable t_wall_hr  equal v_t_cpu/3600.0
 
-# --- B. Core vs Surface ---
+# --- A. WALL CLOCK TIME TRACKING ---
+variable t_cpu      equal cpu         # CPU time in seconds
+variable t_wall_hr  equal v_t_cpu/3600.0  # Convert to hours
+
+# --- B. CORE vs SURFACE CLASSIFICATION ---
+# Calculate center of mass for spherical particle
 compute com all com
 variable xcm equal c_com[1]
 variable ycm equal c_com[2]
 variable zcm equal c_com[3]
 
+# Squared distance from COM
 variable rsq atom (x-v_xcm)^2+(y-v_ycm)^2+(z-v_zcm)^2
-compute r2max all reduce max v_rsq
-variable rcut_sq equal 0.64*c_r2max
+compute r2max all reduce max v_rsq    # Find maximum r²
+variable rcut_sq equal 0.64*c_r2max   # Core = inner 80% by volume
 variable core_mask   atom "v_rsq < v_rcut_sq"
 variable surface_mask atom "v_rsq >= v_rcut_sq"
 
-# Initial group evaluation force
+# Force initial evaluation of group membership
 fix __tmp_int all nve
 run 0 post no
 unfix __tmp_int
 
+# Dynamic groups updated every 5000 steps (particles can move between regions)
 group core    dynamic all var core_mask    every 5000
 group surface dynamic all var surface_mask every 5000
 
@@ -102,29 +107,30 @@ fix __tmp_int all nve
 run 0 post no
 unfix __tmp_int
 
-# --- C. Phase Transformation Metrics ---
-compute T_core core temp
-compute pe_all all pe/atom
-compute ack    all ackland/atom
+# --- C. PHASE IDENTIFICATION ---
+compute T_core core temp              # Temperature of core atoms only
+compute pe_all all pe/atom            # Per-atom potential energy
+compute ack    all ackland/atom       # Ackland structure analysis (BCC=3, FCC=1, etc.)
 
-# Phase Fraction (Austenite = BCC(3))
+# Austenite fraction (BCC phase)
 variable is_aus atom "c_ack == 3"
-compute n_aus core reduce sum v_is_aus
+compute n_aus core reduce sum v_is_aus  # Count BCC atoms in core
 variable n_core equal count(core)
-variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-20)"
+variable frac_aus equal "c_n_aus / (v_n_core + 1.0e-20)"  # Fraction (avoid div/0)
 
-# --- D. Stress & Enthalpy ---
-compute st all stress/atom NULL
-variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)
-compute Szz all reduce sum c_st[3]
-variable SigmaZZ_GPa equal -(c_Szz/v_Vol_total)*1.0e-4
+# --- D. STRESS AND ENTHALPY ---
+compute st all stress/atom NULL       # Atomic stress tensor
+variable Vol_total equal (4.0/3.0)*PI*(c_r2max^1.5)  # Approximate particle volume
+compute Szz all reduce sum c_st[3]    # Total stress in z-direction
+variable SigmaZZ_GPa equal -(c_Szz/v_Vol_total)*1.0e-4  # Convert to GPa
 
+# Total enthalpy (PE + KE)
 compute ke_all all ke/atom
 compute H_total_compute all reduce sum c_pe_all c_ke_all
 variable H_total_eV equal c_H_total_compute[1]+c_H_total_compute[2]
 
-# --- E. Displacement (restart-safe) ---
-fix disp_COMPUTE_STORE all store/state 0 x y z
+# --- E. ATOMIC DISPLACEMENT (Shape Memory Effect) ---
+fix disp_COMPUTE_STORE all store/state 0 x y z  # Store reference positions
 
 variable dx atom x-f_disp_COMPUTE_STORE[1]
 variable dy atom y-f_disp_COMPUTE_STORE[2]
@@ -132,74 +138,77 @@ variable dz atom z-f_disp_COMPUTE_STORE[3]
 variable disp2 atom (v_dx*v_dx+v_dy*v_dy+v_dz*v_dz)
 
 compute disp2_mean all reduce ave v_disp2
-variable disp_rms equal sqrt(c_disp2_mean)
+variable disp_rms equal sqrt(c_disp2_mean)  # RMS displacement from initial
 
 # ==========================================================================
-# 4. OUTPUTS (FIXED FOR PERSISTENCE)
+# 4. OUTPUT CONFIGURATION
 # ==========================================================================
 variable log_file string "${output_dir}/hysteresis_full.txt"
 
-# 1. CLEANUP: If Fresh Start (Step 0), delete old file to start clean.
+# Clean slate if starting fresh
 if "$(step) == 0" then "shell rm -f ${log_file}"
 
-thermo 1000
+thermo 1000  # Print thermodynamic info every 1000 steps
 thermo_style custom step temp c_T_core v_frac_aus v_SigmaZZ_GPa v_t_wall_hr
 
-# 2. OUTPUT: Use 'append' instead of 'file'.
-#    - Fresh start: File was deleted, so 'append' creates a new one.
-#    - Restart: File exists, so 'append' adds to it (saving history).
+# Data logging: append mode preserves data across restarts
 fix data_out all print 1000 &
 "$(step) $(temp) $(c_T_core) $(v_H_total_eV) $(v_SigmaZZ_GPa) $(v_frac_aus) $(v_disp_rms) $(v_t_wall_hr)" &
 append ${log_file} screen no &
 title "# Step T_Global T_Core H_Total(eV) SigmaZZ(GPa) Frac_Aus Disp_RMS(A) Wall_Hr"
 
+# Trajectory snapshots every 10 ps
 dump 1 all custom 5000 ${output_dir}/dump.cycle.*.gz &
     id type x y z c_pe_all c_ack c_st[1] c_st[2] c_st[3] v_dx v_dy v_dz v_disp2
 dump_modify 1 sort id element Ni Ti
 
+# Alternating restart files for safety
 restart 10000 ${restart_dir}/restart.rolling.1 ${restart_dir}/restart.rolling.2
 
 # ==========================================================================
-# 5. EXECUTION FLOW
+# 5. THERMAL CYCLE EXECUTION
 # ==========================================================================
 
 print ">>> STARTING THERMAL CYCLE"
 
-# Init Velocities (Only if Fresh Start)
+# Initialize velocities only on fresh start
 if "$(step) == 0" then &
   "velocity all create ${T_high} ${seed} mom yes rot yes dist gaussian"
 
+# Remove COM drift
 fix mom all momentum 100 linear 1 1 1 angular
 
-# --- STAGE 0: EQUILIBRATE (500K) ---
+# --- STAGE 0: EQUILIBRATE AT HIGH TEMPERATURE (500K) ---
 print ">>> STAGE 0: Equilibrate Austenite"
 fix nvt all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${end_stage0} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage0_end
 
-# --- STAGE 1: COOLING (500K -> 200K) ---
+# --- STAGE 1: COOLING RAMP (500K -> 200K) ---
+# Observe forward transformation: Austenite → Martensite
 print ">>> STAGE 1: Cooling (A->M)"
 fix nvt all nvt temp ${T_high} ${T_low} ${tdamp}
 run ${end_stage1} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage1_end
 
-# --- STAGE 2: HOLD LOW (200K) ---
+# --- STAGE 2: HOLD AT LOW TEMPERATURE (200K) ---
 print ">>> STAGE 2: Relax Martensite"
 fix nvt all nvt temp ${T_low} ${T_low} ${tdamp}
 run ${end_stage2} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage2_end
 
-# --- STAGE 3: HEATING (200K -> 500K) ---
+# --- STAGE 3: HEATING RAMP (200K -> 500K) ---
+# Observe reverse transformation: Martensite → Austenite
 print ">>> STAGE 3: Heating (M->A)"
 fix nvt all nvt temp ${T_low} ${T_high} ${tdamp}
 run ${end_stage3} upto
 unfix nvt
 write_restart ${restart_dir}/restart.stage3_end
 
-# --- STAGE 4: FINAL RECOVERY (500K) ---
+# --- STAGE 4: FINAL RECOVERY AT HIGH TEMPERATURE (500K) ---
 print ">>> STAGE 4: Final Recovery"
 fix nvt all nvt temp ${T_high} ${T_high} ${tdamp}
 run ${end_stage4} upto

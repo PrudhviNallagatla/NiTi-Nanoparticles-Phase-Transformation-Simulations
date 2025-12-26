@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- CONFIG ---
+# Configurations
 PROJECT_ROOT="/home/rimuru/workspace"
 LAMMPS_BIN="/usr/local/bin/lmp"
 
@@ -22,7 +22,6 @@ mkdir -p "${LOG_DIR}" "${RAW_OUT_ROOT}"
 
 # Resources
 export OMP_NUM_THREADS=1
-# FORCE 8 CORES (As requested)
 export MPI_RANKS=8
 
 echo ">>> RUNNING WITH ${MPI_RANKS} CORES"
@@ -64,7 +63,7 @@ for datafile in "${DATA_FILES[@]}"; do
 done
 
 # ----------------------------
-# 3) SME (Shape Memory Effect) - PRIORITY
+# 3) SME (Shape Memory Effect)
 # ----------------------------
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
@@ -78,7 +77,6 @@ for datafile in "${DATA_FILES[@]}"; do
     echo ">>> Skipping SME (Found)"
   else
     echo ">>> Running SME ${name}"
-    # VISIBLE OUTPUT: Uses | tee
     INPUT_DATA="unused" OUTPUT_DIR="${dir}" RESTART_DIR="${dir}/restarts" \
     START_CMD="read_restart ${restart_lo}" \
     POT_LIB="${POT_LIB}" POT_FILE="${POT_FILE}" SEED="42" \
@@ -87,7 +85,7 @@ for datafile in "${DATA_FILES[@]}"; do
 done
 
 # ----------------------------
-# 4) SE (Superelasticity) - AFTER SME
+# 4) SE (Superelasticity)
 # ----------------------------
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
@@ -101,7 +99,6 @@ for datafile in "${DATA_FILES[@]}"; do
     echo ">>> Skipping SE (Found)"
   else
     echo ">>> Running SE ${name}"
-    # VISIBLE OUTPUT: Uses | tee to show you the progress
     INPUT_DATA="unused" OUTPUT_DIR="${dir}" RESTART_DIR="${dir}/restarts" \
     THERMAL_RESTART="${restart_hi}" \
     POT_LIB="${POT_LIB}" POT_FILE="${POT_FILE}" SEED="42" \
