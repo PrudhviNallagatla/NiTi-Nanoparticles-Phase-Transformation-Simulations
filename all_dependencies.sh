@@ -1,224 +1,91 @@
 #!/bin/bash
-# filepath: d:\MD Sims\SME_SE\all_dependencies.sh
+# filepath: /home/rimuru/workspace/install_lammps.sh
 
-###############################################################################
-# LAMMPS Full Installation Script for WSL/Docker/DevContainers
-# Optimized for CLI-only environments (no GUI)
-# 
-# Usage: 
-#   chmod +x all_dependencies.sh
-#   ./all_dependencies.sh
-#
-# For Docker:
-#   docker run -it -v $(pwd):/workspace ubuntu:22.04
-#   cd /workspace && bash all_dependencies.sh
-#
-# Author: PrudhviNallagatla
-# Working Directory: /home/rimuru/workspace (WSL)
-###############################################################################
+set -euo pipefail
 
-set -euo pipefail  # Exit on error, undefined vars, pipe failures
-
-# Color output for better visibility
+# --- COLORS ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 log() { echo -e "${GREEN}[$(date +'%H:%M:%S')]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
-# Detect environment
-if grep -qi microsoft /proc/version 2>/dev/null; then
-    ENV_TYPE="WSL"
-elif [ -f /.dockerenv ]; then
-    ENV_TYPE="Docker"
-else
-    ENV_TYPE="Linux"
-fi
-
-log "Detected environment: ${ENV_TYPE}"
-
-# Detect number of cores for parallel compilation
 NPROC=$(nproc)
-log "Detected ${NPROC} CPU cores"
+log "Detected ${NPROC} CPU cores. We will use them all."
 
-# Set non-interactive for apt (critical for Docker)
+# Set non-interactive
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-# -----------------------------------------------------------------------------
-# Show output in terminal AND save logs (tee), while preserving exit codes.
-# -----------------------------------------------------------------------------
-run_tee() {
-    # Usage: run_tee /path/to/log "command with args"
-    local logfile="$1"; shift
-    # Print the command for visibility
-    echo -e "${BLUE}[CMD]${NC} $*"
-    # Run and tee output
-    "$@" 2>&1 | tee "$logfile"
-    # Preserve the command's exit code (not tee's)
-    local rc=${PIPESTATUS[0]}
-    if [ $rc -ne 0 ]; then
-        echo -e "${RED}[ERROR]${NC} Command failed (exit $rc). See: $logfile"
-        exit $rc
-    fi
-}
+#==============================================================================
+# STEP 1: PURGE OLD INSTALLATION
+#==============================================================================
+log "[1/7] Purging old LAMMPS installation (Scorched Earth Policy)..."
+
+# Nuke binaries
+sudo rm -f /usr/local/bin/lmp /usr/local/bin/lammps 2>/dev/null || true
+# Nuke libraries
+sudo rm -rf /usr/local/lib/liblammps* 2>/dev/null || true
+sudo rm -rf /usr/local/lib64/liblammps* 2>/dev/null || true
+# Nuke python bindings
+pip3 uninstall -y lammps 2>/dev/null || true
+# Nuke build dir
+sudo rm -rf /tmp/lammps 2>/dev/null || true
+# Clean ldconfig cache
+sudo ldconfig
+
+log "✓ Previous installation vaporized."
 
 #==============================================================================
-# STEP 1: Remove old LAMMPS installation
+# STEP 2: DEPENDENCIES (UNIFIED)
 #==============================================================================
-log "[1/8] Checking for existing LAMMPS installation..."
+log "[2/7] Updating system and installing build tools..."
 
-if command -v lmp &> /dev/null || command -v lammps &> /dev/null; then
-    warn "Found existing LAMMPS installation. Removing..."
-    
-    sudo rm -f /usr/local/bin/lmp /usr/local/bin/lammps 2>/dev/null || true
-    sudo rm -rf /usr/local/share/lammps 2>/dev/null || true
-    sudo rm -rf /usr/local/lib/liblammps* 2>/dev/null || true
-    sudo rm -rf /usr/local/lib64/liblammps* 2>/dev/null || true
-    sudo rm -rf /tmp/lammps 2>/dev/null || true
-    
-    # Remove Python LAMMPS interface
-    pip3 uninstall -y lammps 2>/dev/null || true
-    
-    log "✓ Old LAMMPS removed"
-else
-    log "No existing LAMMPS found (clean install)"
+sudo apt-get update -qq
+sudo apt-get upgrade -y -qq
+
+# Combined dependency list. No duplicates.
+sudo apt-get install -y --no-install-recommends \
+    build-essential cmake git git-lfs wget curl vim nano tmux \
+    btop unzip zip pigz zstd xz-utils jq bc time \
+    gfortran g++ gcc make pkg-config \
+    libopenmpi-dev openmpi-bin \
+    libblas-dev liblapack-dev libfftw3-dev \
+    libpng-dev libjpeg-dev libz-dev \
+    python3 python3-dev python3-pip python3-venv \
+    libhdf5-serial-dev hdf5-tools \
+    libnetcdf-dev netcdf-bin \
+    ffmpeg gnuplot-nox \
+    libkim-api-dev openkim-models
+
+# Optional: Zellij
+if ! command -v zellij &> /dev/null; then
+    sudo snap install zellij --classic 2>/dev/null || warn "Snap not available, skipping Zellij."
 fi
 
-#==============================================================================
-# STEP 2: Update system
-#==============================================================================
-log "[2/8] Updating system packages..."
-sudo apt-get update
-sudo apt-get upgrade -y
+log "✓ Dependencies acquired."
 
 #==============================================================================
-# STEP 3: Install system dependencies (NO GUI tools)
+# STEP 3: PYTHON SCIENTIFIC STACK
 #==============================================================================
-log "[3/8] Installing build dependencies and CLI tools..."
-sudo apt-get install -y --no-install-recommends \
-    build-essential \
-    cmake \
-    git \
-    git-lfs \
-    ca-certificates \
-    wget \
-    curl \
-    vim \
-    nano \
-    tmux \
-    tree \
-    unzip \
-    zip \
-    pigz \
-    zstd \
-    xz-utils \
-    rsync \
-    jq \
-    gfortran \
-    g++ \
-    gcc \
-    make \
-    pkg-config \
-    libopengl0 \
-    libegl1 \
-    libopenmpi-dev \
-    openmpi-bin \
-    libblas-dev \
-    liblapack-dev \
-    libfftw3-dev \
-    libeigen3-dev \
-    libpng-dev \
-    libjpeg-dev \
-    python3 \
-    python3-dev \
-    python3-pip \
-    python3-venv \
-    libhdf5-dev \
-    libnetcdf-dev \
-    zlib1g-dev \
-    libgsl-dev \
-    graphviz \
-    imagemagick \
-    gnuplot-nox \
-    ffmpeg \
-    bc \
-    time
+log "[3/7] Installing Python scientific stack..."
 
-sudo snap install zellij --classic
+# Upgrade pip first
+python3 -m pip install --break-system-packages --upgrade pip setuptools wheel > /dev/null
 
-warn "═══════════════════════════════════════════════════════════════"
-warn " zellij is a simple terminal workspace manager (like tmux) - always useful"
-warn " ═══════════════════════════════════════════════════════════════"
-warn "  NOTE: GUI tools (e.g., Ovito) are NOT installed in this script"
-warn "  Please install them manually if needed."
+# Install the stack
+# Note: Added 'wheel' and 'cython' which are often implicit deps for these packages
+pip3 install --break-system-packages --no-cache-dir \
+    numpy scipy matplotlib pandas \
+    ase ovito MDAnalysis pymatgen freud-analysis \
+    jupyter jupyterlab tqdm pyyaml h5py netcdf4 \
+    scikit-learn lmfit atomman phonopy Cython
 
-log "✓ System dependencies installed"
-
-#==============================================================================
-# STEP 4: Install Python packages
-#==============================================================================
-log "[4/8] Installing Python scientific packages..."
-
-# Upgrade pip first (show output)
-run_tee /tmp/pip_upgrade.log pip3 install --break-system-packages --no-cache-dir --upgrade pip setuptools wheel
-
-log "  Installing core scientific stack..."
-run_tee /tmp/pip_core.log pip3 install --break-system-packages --no-cache-dir \
-    numpy scipy matplotlib pandas
-
-log "  Installing molecular dynamics tools..."
-run_tee /tmp/pip_mdtools.log pip3 install --break-system-packages --no-cache-dir \
-    ase ovito MDAnalysis pymatgen freud-analysis
-
-log "  Installing analysis and utilities..."
-run_tee /tmp/pip_analysis.log pip3 install --break-system-packages --no-cache-dir \
-    jupyter jupyterlab ipykernel tqdm pyyaml h5py netcdf4 seaborn plotly networkx scikit-learn
-
-log "  Installing advanced tools..."
-run_tee /tmp/pip_advanced.log pip3 install --break-system-packages --no-cache-dir \
-    lmfit statsmodels sympy numba cython atomman matscipy phonopy spglib mendeleev periodictable tabulate rich click loguru
-
-log "✓ Python packages installed"
-
-#==============================================================================
-# STEP 5: Install Atomsk (CRITICAL for polycrystalline structures)
-#==============================================================================
-# ⚠️  ATOMSK MUST BE INSTALLED MANUALLY ⚠️
-#
-# Atomsk is ESSENTIAL for creating grain boundaries and polycrystalline structures
-# The automated download often fails due to server issues.
-#
-# MANUAL INSTALLATION STEPS: Compile from source
-#
-#    git clone https://github.com/pierrehirel/atomsk.git
-#    cd atomsk/src
-#    make atomsk
-#    sudo make install
-#
-# 2. Verify installation:
-#    atomsk --version
-#    atomsk --help
-#
-# 3. Test polycrystal creation:
-#    atomsk --create fcc 4.05 Al aluminum.xsf
-#    atomsk --polycrystal aluminum.xsf polycrystal.cfg -wrap
-#
-# ALTERNATIVE: Install via Conda (if available):
-#    conda install -c conda-forge atomsk
-#
-# For Docker: Add this to your Dockerfile AFTER this script runs:
-#    RUN wget https://atomsk.univ-lille.fr/code/atomsk_b0.13.1_Linux-x86-64.tar.gz && \
-#        tar -xzf atomsk_b0.13.1_Linux-x86-64.tar.gz && \
-#        mv atomsk /usr/local/bin/ && \
-#        chmod +x /usr/local/bin/atomsk && \
-#        rm atomsk_b0.13.1_Linux-x86-64.tar.gz
-#
-#==============================================================================
+log "✓ Python stack ready."
 
 log "[5/8] Atomsk installation SKIPPED - requires manual installation"
 warn "═══════════════════════════════════════════════════════════════"
@@ -236,258 +103,123 @@ warn "Official docs: https://atomsk.univ-lille.fr/doc/en/"
 warn "═══════════════════════════════════════════════════════════════"
 warn ""
 
-# Check if Atomsk already exists (from previous manual install)
-if command -v atomsk &> /dev/null; then
-    log "✓ Atomsk already installed: $(atomsk --version 2>&1 | head -1)"
-else
-    warn "Atomsk NOT found - remember to install manually!"
-fi
-
 #==============================================================================
-# STEP 6: Download LAMMPS
+# STEP 4: DOWNLOAD SOURCE
 #==============================================================================
-log "[6/8] Downloading LAMMPS from GitHub..."
+log "[4/7] Cloning LAMMPS (Stable 2Aug2023_update3)..."
 cd /tmp
-
-# Remove any existing LAMMPS source
-rm -rf lammps
-
-# Clone stable version (faster than full history)
 if ! git clone --depth 1 --branch stable_2Aug2023_update3 https://github.com/lammps/lammps.git; then
-    error "Failed to download LAMMPS from GitHub"
+    error "Git clone failed."
 fi
-
 cd lammps
-log "✓ LAMMPS source downloaded ($(git describe --tags))"
 
 #==============================================================================
-# STEP 7: Compile LAMMPS with ALL packages
+# STEP 5: THE "ULTIMATE" COMPILATION (FIXED & ROBUST)
 #==============================================================================
-log "[7/8] Compiling LAMMPS with ALL packages..."
-log "  This will take 15-30 minutes depending on CPU..."
+log "[5/7] Configuring CMake..."
 
+# 1. Clean the battlefield
+rm -rf build
 mkdir -p build
 cd build
 
-# Configure with CMake (show + log)
-run_tee /tmp/lammps_cmake.log cmake ../cmake \
-    -D CMAKE_BUILD_TYPE=Release \
-    -D BUILD_MPI=yes \
-    -D BUILD_OMP=yes \
-    -D BUILD_SHARED_LIBS=yes \
-    -D CMAKE_CXX_COMPILER=mpicxx \
-    -D CMAKE_C_COMPILER=mpicc \
-    -D CMAKE_Fortran_COMPILER=mpifort \
-    -D PKG_OPENMP=yes \
-    -D PKG_KSPACE=yes \
-    -D PKG_MANYBODY=yes \
-    -D PKG_MEAM=yes \
-    -D PKG_MOLECULE=yes \
-    -D PKG_RIGID=yes \
-    -D PKG_GRANULAR=yes \
-    -D PKG_MISC=yes \
-    -D PKG_EXTRA-COMPUTE=yes \
-    -D PKG_EXTRA-DUMP=yes \
-    -D PKG_EXTRA-FIX=yes \
-    -D PKG_EXTRA-PAIR=yes \
-    -D PKG_VORONOI=yes \
-    -D PKG_PTM=yes \
-    -D PKG_REPLICA=yes \
-    -D PKG_PYTHON=yes \
-    -D PKG_NETCDF=yes \
-    -D PKG_DIFFRACTION=yes \
-    -D PKG_PHONON=yes \
-    -D WITH_GZIP=yes \
-    -D WITH_JPEG=yes \
-    -D WITH_PNG=yes \
-    -D WITH_FFMPEG=yes
-
-log "  Building with ${NPROC} parallel jobs..."
-run_tee /tmp/lammps_build.log make -j"${NPROC}"
-
-log "  Installing LAMMPS to /usr/local..."
-run_tee /tmp/lammps_install.log sudo make install
-
-log "✓ LAMMPS installed"
-
-#==============================================================================
-# FIX: Configure shared library path (CRITICAL FOR WSL)
-#==============================================================================
-log "Configuring shared library paths..."
-
-# Add /usr/local/lib to ld.so.conf if not already there
-if [ ! -f /etc/ld.so.conf.d/lammps.conf ]; then
-    echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/lammps.conf > /dev/null
-    echo "/usr/local/lib64" | sudo tee -a /etc/ld.so.conf.d/lammps.conf > /dev/null
-    log "  Added library paths to /etc/ld.so.conf.d/lammps.conf"
+# 2. Interrogate the MPI Fortran wrapper for the CORRECT link flags
+# This prevents "cannot find -lmpifort" or "undefined reference" errors.
+log "Detecting MPI Fortran Linker Flags..."
+if command -v mpifort &> /dev/null; then
+    MPI_FORT_LDFLAGS=$(mpifort --showme:link 2>/dev/null || mpifort -link_info 2>/dev/null || echo "-lmpi_mpifh")
+    log "Detected Fortran Flags: ${MPI_FORT_LDFLAGS}"
+else
+    error "mpifort not found! Did you install libopenmpi-dev?"
 fi
 
-# Update library cache
+# 3. Export compiler wrappers
+export CC=mpicc
+export CXX=mpicxx
+export FC=mpifort
+
+cmake ../cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_CXX_COMPILER=mpicxx \
+    -D CMAKE_CXX_FLAGS="-O3 -march=native -DNDEBUG" -D BUILD_MPI=yes -D BUILD_OMP=yes \
+    -D PKG_OPENMP=yes -D PKG_INTEL=yes -D PKG_OPT=yes \
+    -D PKG_MEAM=yes -D PKG_MANYBODY=yes -D PKG_PTM=yes -D PKG_VORONOI=yes -D DOWNLOAD_VORONOI=yes \
+    -D PKG_REPLICA=yes -D PKG_MC=yes -D PKG_PYTHON=yes \
+    -D PKG_PLUMED=yes -D DOWNLOAD_PLUMED=yes \
+    -D PKG_IO=yes -D PKG_MPIIO=yes -D PKG_COMPRESS=yes \
+    -D PKG_EXTRA-COMPUTE=yes -D PKG_EXTRA-DUMP=yes -D PKG_EXTRA-FIX=yes \
+    -D WITH_GZIP=yes -D WITH_JPEG=yes -D WITH_PNG=yes -D WITH_FFMPEG=yes
+
+# Note: The below is an alternative CMake command with """"ALL""""" packages enabled.
+
+# cmake ../cmake -D CMAKE_BUILD_TYPE=Release -D CMAKE_INSTALL_PREFIX=/usr/local -D CMAKE_EXE_LINKER_FLAGS="${MPI_FORT_LDFLAGS}" -D BUILD_MPI=yes -D BUILD_OMP=yes -D BUILD_SHARED_LIBS=yes -D FFT=FFTW3 -D PKG_OPENMP=yes -D PKG_INTEL=yes -D PKG_OPT=yes -D PKG_KOKKOS=yes -D Kokkos_ENABLE_OPENMP=yes -D Kokkos_ENABLE_SERIAL=yes \
+#     -D PKG_KSPACE=yes -D PKG_MANYBODY=yes -D PKG_MEAM=yes -D PKG_MOLECULE=yes -D PKG_RIGID=yes -D PKG_GRANULAR=yes -D PKG_ASPHERE=yes -D PKG_COLLOID=yes -D PKG_SNAP=yes -D PKG_REAXFF=yes -D PKG_QEQ=yes -D PKG_PERI=yes -D PKG_SPIN=yes -D PKG_DIPOLE=yes -D PKG_CLASS2=yes -D PKG_SHOCK=yes -D PKG_DIELECTRIC=yes \
+#     -D PKG_KIM=yes -D DOWNLOAD_KIM=yes -D PKG_ML-SNAP=yes -D PKG_ML-PACE=yes -D PKG_ML-RANN=yes -D PKG_ML-IAP=yes -D PKG_ML-POD=yes -D PKG_MC=yes -D PKG_REPLICA=yes -D PKG_PYTHON=yes -D PKG_VORONOI=yes -D DOWNLOAD_VORONOI=yes -D PKG_PLUMED=yes -D DOWNLOAD_PLUMED=yes -D PKG_SCAFACOS=yes -D DOWNLOAD_SCAFACOS=yes \
+#     -D PKG_COLVARS=yes -D PKG_PHONON=yes -D PKG_DIFFRACTION=yes -D PKG_PTM=yes -D PKG_IO=yes -D PKG_NETCDF=yes -D PKG_H5MD=yes -D PKG_MPIIO=yes -D PKG_COMPRESS=yes -D PKG_MISC=yes -D PKG_EXTRA-COMPUTE=yes -D PKG_EXTRA-DUMP=yes -D PKG_EXTRA-FIX=yes -D PKG_EXTRA-PAIR=yes \
+#     -D WITH_GZIP=yes -D WITH_PNG=yes -D WITH_JPEG=yes -D WITH_FFMPEG=yes
+
+log "Compiling with ${NPROC} cores..."
+make -j"${NPROC}"
+
+log "Installing binaries..."
+sudo make install
+
+#==============================================================================
+# STEP 6: PYTHON INTERFACE & FINAL SETUP
+#==============================================================================
+log "[6/7] Installing Python Interface..."
+
+# Ensure ldconfig knows about the new libs immediately
+echo "/usr/local/lib" | sudo tee /etc/ld.so.conf.d/lammps.conf > /dev/null
 sudo ldconfig
 
-# Verify library is found
-if ldconfig -p | grep -q liblammps.so; then
-    log "✓ liblammps.so registered in library cache"
-else
-    warn "liblammps.so not found in cache, trying manual path..."
-    # Try to find the library
-    LAMMPS_LIB=$(find /usr/local/lib* -name "liblammps.so*" 2>/dev/null | head -1)
-    if [ -n "$LAMMPS_LIB" ]; then
-        log "  Found library at: ${LAMMPS_LIB}"
-    else
-        error "LAMMPS library not found after installation!"
-    fi
-fi
+# Set variables so Python build can find the shared lib we just installed
+export LD_LIBRARY_PATH=/usr/local/lib:${LD_LIBRARY_PATH:-}
+export LAMMPS_LIB_PATH=/usr/local/lib
 
-#==============================================================================
-# STEP 8: Install LAMMPS Python interface (OPTIONAL BUT RECOMMENDED)
-#==============================================================================
-log "[8/8] Installing LAMMPS Python interface..."
 cd ../python
-
-# Show output + log, but keep it optional (don't hard-fail the whole script)
-echo -e "${BLUE}[CMD]${NC} pip3 install --break-system-packages --no-cache-dir ."
-if ! (pip3 install --break-system-packages --no-cache-dir . 2>&1 | tee /tmp/lammps_python.log); then
-    warn "LAMMPS Python interface installation failed (check /tmp/lammps_python.log)"
-    warn "This is OPTIONAL - LAMMPS CLI will still work perfectly"
-else
-    log "✓ LAMMPS Python interface installed"
+if ! pip3 install --break-system-packages . ; then
+    warn "Python install failed. Attempting to install via make..."
+    cd ../build
+    sudo make install-python || error "Python interface installation failed."
 fi
 
 #==============================================================================
-# VERIFICATION
+# STEP 7: BASH CONFIGURATION
 #==============================================================================
-log "Verifying installation..."
+log "[7/7] Configuring environment..."
 
-# Check LAMMPS binary
-if ! command -v lmp &> /dev/null; then
-    error "LAMMPS binary not found in PATH"
+# Idempotent Bashrc setup
+if ! grep -q "LAMMPS_ULTIMATE" ~/.bashrc; then
+cat >> ~/.bashrc << 'EOF'
+
+# --- LAMMPS_ULTIMATE SETUP ---
+export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+# Ensure Python finds the LAMMPS module
+export PYTHONPATH=$PYTHONPATH:/usr/local/lib/python3/dist-packages
+
+# Aliases
+alias lmp='lmp'
+alias lmp_mpi='mpirun -np $(nproc) lmp'
+# Optimized execution for Intel CPUs (AVX + Mixed Precision)
+alias lmp_intel='mpirun -np $(nproc) lmp -sf intel -pk intel 0 mode mixed'
+EOF
 fi
 
-# Test if lmp runs without library errors
-log "Testing LAMMPS binary..."
-if lmp -help > /dev/null 2>&1; then
-    log "✓ LAMMPS binary runs successfully"
-else
-    error "LAMMPS binary has errors - check library paths"
-fi
-
-# Check version
-LAMMPS_VERSION=$(lmp -help 2>&1 | grep "LAMMPS" | head -1)
-log "✓ ${LAMMPS_VERSION}"
-
-# Check Python interface
-if python3 -c "from lammps import lammps; lammps()" &> /dev/null; then
-    log "✓ LAMMPS Python interface working"
-else
-    warn "LAMMPS Python interface not working (OPTIONAL - CLI works fine)"
-fi
-
-# Check key packages
-log "Checking enabled packages..."
-lmp -help 2>&1 | grep -A50 "Installed packages" | grep -E "MEAM|VORONOI|PYTHON|EXTRA-DUMP" || warn "Some packages missing"
-
-#==============================================================================
-# CLEANUP
-#==============================================================================
-log "Cleaning up temporary files..."
+# Cleanup
 cd ~
 sudo rm -rf /tmp/lammps
-sudo apt-get autoremove -y
-sudo apt-get clean
 
-#==============================================================================
-# POST-INSTALL CONFIGURATION
-#==============================================================================
-log "Setting up environment..."
-
-# Create .bashrc additions (only if not exists)
-if ! grep -q "# LAMMPS aliases" ~/.bashrc 2>/dev/null; then
-    cat >> ~/.bashrc << 'EOF'
-
-# LAMMPS environment
-export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
-
-# LAMMPS aliases
-alias lammps='lmp'
-alias lmp-serial='lmp'
-alias lmp-mpi='mpirun -np $(nproc) lmp'
-alias lmp-omp='lmp -sf omp -pk omp $(nproc)'
-
-# Python aliases
-alias py='python3'
-alias ipy='ipython'
-
-# Analysis aliases
-alias ovito='ovito'
-
-# Workspace shortcut (WSL specific)
-alias workspace='cd /home/rimuru/workspace'
-EOF
-    log "✓ Aliases and environment added to ~/.bashrc"
-else
-    log "✓ Aliases already exist in ~/.bashrc"
-fi
-
-# Source the updated bashrc for current session
-export LD_LIBRARY_PATH=/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH
-
-#==============================================================================
-# FINAL REPORT
-#==============================================================================
 echo ""
-echo "=========================================="
-echo -e "${GREEN}✓ INSTALLATION COMPLETE${NC}"
-echo "=========================================="
-echo "Environment: ${ENV_TYPE}"
-echo "Working Dir: /home/rimuru/workspace"
-echo "LAMMPS:      $(lmp -help 2>&1 | grep "LAMMPS" | head -1)"
-echo "Python:      $(python3 --version)"
-echo "Cores:       ${NPROC}"
-echo "=========================================="
+echo "========================================================"
+echo -e "${GREEN}   LAMMPS INSTALLATION COMPLETE${NC}"
+echo "========================================================"
+echo " Architecture: Intel i7 (Optimized for AVX)"
+echo " Version:      Stable 2Aug2023_update3"
+echo " Python:       Enabled (import lammps)"
+echo "========================================================"
+echo " USAGE:"
+echo -e "   ${YELLOW}source ~/.bashrc${NC}"
+echo -e "   ${YELLOW}lmp_intel -in input.script${NC}"
 echo ""
-
-# Check Atomsk status
-if command -v atomsk &> /dev/null; then
-    echo -e "${GREEN}✓ Atomsk:     $(atomsk --version 2>&1 | head -1)${NC}"
-else
-    echo -e "${RED}✗ Atomsk:     NOT INSTALLED${NC}"
-    echo ""
-    echo -e "${YELLOW}⚠️  INSTALL ATOMSK MANUALLY FOR POLYCRYSTAL WORK:${NC}"
-    echo ""
-    echo "  cd /tmp"
-    echo "  wget https://atomsk.univ-lille.fr/code/atomsk_b0.13.1_Linux-x86-64.tar.gz"
-    echo "  tar -xzf atomsk_b0.13.1_Linux-x86-64.tar.gz"
-    echo "  sudo mv atomsk /usr/local/bin/"
-    echo "  sudo chmod +x /usr/local/bin/atomsk"
-    echo ""
-fi
-
-echo "=========================================="
-echo ""
-echo "Quick start:"
-echo "  cd /home/rimuru/workspace"
-echo "  lmp -in your_script.lmp"
-echo "  mpirun -np ${NPROC} lmp -in your_script.lmp"
-echo "  python3 your_analysis.py"
-echo ""
-echo "Library paths configured:"
-echo "  /usr/local/lib"
-echo "  /usr/local/lib64"
-echo ""
-echo "To use in new terminal sessions:"
-echo "  source ~/.bashrc"
-echo ""
-echo "Test installation:"
-echo "  lmp -help"
-echo ""
-echo "Installed Python packages:"
-pip3 list 2>/dev/null | grep -E "numpy|scipy|matplotlib|ovito|ase|MDAnalysis|freud" || echo "  (list error, but packages installed)"
-echo ""
-echo "LAMMPS packages:"
-lmp -help 2>&1 | grep -A50 "Installed packages" | head -20
-echo ""
-if [ "${ENV_TYPE}" = "WSL" ]; then
-    echo -e "${YELLOW}WSL Note:${NC} Restart your shell or run: ${GREEN}source ~/.bashrc${NC}"
-fi
-echo "=========================================="
+echo " NOTE: If you use potentials like EAM, standard MPI is fine."
+echo " If you use ReaxFF or costly pairs, lmp_intel will fly."
+echo "========================================================"

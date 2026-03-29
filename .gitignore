@@ -1,0 +1,66 @@
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.venv-*/
+venv/
+env/
+
+# Archives and compressed bundles
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# LAMMPS and simulation runtime artifacts
+log.lammps
+*.log
+*.dump
+*.restart
+*.lammpstrj
+*.dcd
+*.xtc
+*.trr
+*.bin
+*.data
+*.xyz
+
+# Large generated datasets and run outputs
+data/analysis_output/
+data/raw_output/
+logs/
+zips/
+*.pdf
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Temporary and restart folders used by workflows
+**/restarts/
+**/restart_files/
+
+# LaTeX build intermediates (keep source and figures)
+paper
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.spl
+paper/*.synctex.gz
+paper/*.toc
