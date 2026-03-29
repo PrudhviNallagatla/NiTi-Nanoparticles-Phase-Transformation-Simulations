@@ -4,7 +4,7 @@ set -euo pipefail
 # Batch runner launcher for Taguchi L9 inputs.
 # Edit values below, save, then run: ./run_taguchi_l9.sh
 
-PYTHON_BIN="${PYTHON_BIN:-python}"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INPUT_CSV="${SCRIPT_DIR}/data/taguchi_l9_inputs.csv"
 OUTPUT_DIR="${SCRIPT_DIR}/output/taguchi_l9"
