@@ -4,40 +4,96 @@ This repository houses a high-throughput computational workflow for simulating *
 
 ## 📂 Repository Structure
 
-The workspace is organized to keep simulation logic separate from data and physical parameters.
+The workspace keeps the simulation inputs, analysis scripts, manuscript assets, and generated outputs separate. Large dump, restart, and analysis-result files are intentionally collapsed here.
 
 ```text
 .
+├── all_dependencies.sh
+├── log.lammps
+├── README.md
+├── docs/
+│   ├── acta_revision_master_todo.md
+│   ├── Azure_workflow.md
+│   ├── NiTi_Nanoparticle_MD_Report.md
+│   ├── response_letter_draft.md
+│   └── reviewer_response_matrix.md
+├── paper/
+│   ├── main.tex
+│   ├── paper_for_reference.tex
+│   ├── references.bib
+│   ├── elsarticle.cls
+│   ├── elsarticle-harv.bst
+│   ├── elsarticle-num.bst
+│   ├── elsarticle-num-names.bst
+│   └── figures/
+├── potentials/
+│   ├── Ni-Ti.eam.fs
+│   ├── NiTi.meam
+│   ├── library.meam
+│   ├── NiTi_graph_v1.pb
+│   └── NiTi_graph_v2.pb
+├── scripts/
+│   ├── run_size_predictor.sh
+│   ├── se.sh
+│   ├── sme.sh
+│   ├── sme_and_se.sh
+│   ├── structure_gen_ase.sh
+│   ├── thermal_cycle_script.sh
+│   ├── zip_it_all.sh
+│   ├── analysers/
+│   │   ├── se_analyser.py
+│   │   ├── thermal_analyser.py
+│   │   ├── thermal_event_radial_probe.py
+│   │   ├── revision_prewrite_analysis.py
+│   │   ├── ovito_revision_checks.py
+│   │   ├── rphase_proxy_analysis.py
+│   │   ├── rphase_cna_aj_scan.py
+│   │   └── .legacy_scripts/
+│   │       ├── hysteresis_analyser.py
+│   │       └── analyze_thermal_cycle.py
+│   └── paper/
+│       ├── generate_data_figures.py
+│       ├── generate_high_value_figures.py
+│       ├── generate_ovito_renderings.py
+│       ├── generate_radial_profile.py
+│       └── generate_revision_figures.py
 ├── src/
-│   ├── lmps/                   # LAMMPS Input Scripts
-│   │   ├── thermal_cycle.lmp   # Phase transformation simulation
-│   │   ├── sme.lmp             # Shape Memory Effect simulation
-│   │   └── se.lmp              # Superelasticity simulation
-│   ├── analysis/               # Python Post-Processing Tools
-│   └── niti_np_gen.py          # Nanoparticle structure generator
-│
+│   ├── ase_np_gen.py
+│   ├── niti_np_gen.py
+│   └── lmps/
+│       ├── minimize.lmp
+│       ├── se.lmp
+│       ├── sme.lmp
+│       └── thermal_cycle.lmp
 ├── data/
-│   ├── structures/             # Input .data files
-│   ├── raw_output/             # Simulation dump files and restarts
-│   └── analysis_output/        # Calculated properties (Hysteresis/Stress-Strain)
-│
-├── potentials/                 # Interatomic Potentials
-│   ├── NiTi.meam               # MEAM parameter file
-│   └── library.meam            # Element library
-│
-└── scripts/                    # Helper scripts for submission
-
+│   ├── structures/
+│   │   ├── niti_5nm_Ni50_single_crystal.xyz
+│   │   └── niti_10nm_Ni50_single_crystal.xyz
+│   ├── raw_output/
+│   │   ├── niti_2nm_Ni50_amorphous/
+│   │   ├── niti_5nm_Ni50_single_crystal/
+│   │   └── niti_10nm_Ni50_single_crystal/
+│   └── analysis_output/
+│       ├── niti_2nm_Ni50_amorphous/
+│       ├── niti_5nm_Ni50_single_crystal/
+│       ├── niti_10nm_Ni50_single_crystal/
+│       └── uncategorized/
+├── logs/
+│   ├── 2nm_1grain/
+│   └── 5nm_1grain/
+├── zips/
+└── .devcontainer/
 ```
 
-* **`src/lmps/`**: Contains the core simulation instructions (LAMMPS input files).
-* **`thermal_cycle.lmp`**: The foundational simulation that establishes the thermal history of the particle.
-* **`sme.lmp`**: The script for simulating the Shape Memory Effect (Low-Temperature behavior).
-* **`se.lmp`**: The script for simulating Superelasticity (High-Temperature behavior).
+* **`src/lmps/`**: LAMMPS input scripts for minimization, thermal cycling, SME, and SE.
+* **`scripts/analysers/`**: Python post-processing scripts for phase analysis, thermal analysis, and paper figures.
+* **`scripts/paper/`**: Figure-generation scripts used to build the manuscript graphics.
+* **`paper/`**: LaTeX manuscript, bibliography, and class/style files.
+* **`data/`**: Input structures plus raw and processed simulation outputs.
+* **`potentials/`**: Interatomic potential files and related graph models.
+* **`docs/`**: Revision notes, response materials, and manuscript support documents.
 
-
-* **`src/analysis/`**: Contains Python tools for post-processing and validating the physics (e.g., checking phase fractions).
-* **`data/`**: The storage location for all outputs, including raw atom positions (dumps) and calculated material properties (logs).
-* **`potentials/`**: Stores the physics definitions (MEAM potential files) that define how Ni and Ti atoms interact.
+Generated dump, restart, and analysis files are omitted from the tree above for readability; the directory structure is preserved where those artifacts live.
 
 ---
 

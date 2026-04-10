@@ -10,6 +10,7 @@ Outputs to: paper/figures/
 """
 
 import os
+import json
 import numpy as np
 import matplotlib
 
@@ -23,6 +24,11 @@ os.makedirs(OUTDIR, exist_ok=True)
 
 ANALYSIS = os.path.join(REPO_ROOT, "data", "analysis_output")
 RAW = os.path.join(REPO_ROOT, "data", "raw_output")
+REVISION_REPORT = os.path.join(
+    ANALYSIS,
+    "uncategorized",
+    "revision_prewrite_analysis.json",
+)
 
 PATHS = {
     "5nm": {
@@ -209,10 +215,20 @@ def _hysteresis_area(load, unload):
 def fig9_hysteresis_work():
     fig, ax = plt.subplots(figsize=(SINGLE_COL, 2.8))
 
+    reference_areas = {}
+    if os.path.exists(REVISION_REPORT):
+        with open(REVISION_REPORT, "r", encoding="utf-8") as f:
+            report = json.load(f)
+        reference_areas = {
+            "5nm": report["loop_area_metrics"]["5nm"]["loop_area_gpa"],
+            "10nm": report["loop_area_metrics"]["10nm"]["loop_area_gpa"],
+        }
+
     for size, color, label in [("5nm", C5, "5 nm"), ("10nm", C10, "10 nm")]:
         d = load_se(PATHS[size]["se"])
         load, unload = split_load_unload(d)
         eps, sig_l, sig_u_interp, area = _hysteresis_area(load, unload)
+        area_to_report = reference_areas.get(size, area)
 
         ax.plot(eps * 100.0, sig_l, color=color, lw=1.6, ls="-")
         ax.plot(eps * 100.0, sig_u_interp, color=color, lw=1.3, ls="--")
@@ -220,7 +236,7 @@ def fig9_hysteresis_work():
         ax.text(
             6.0,
             (2.6 if size == "5nm" else 1.35),
-            f"{label}: area={area:.3f} GPa",
+            f"{label}: area={area_to_report:.3f} GPa",
             color=color,
             fontsize=8,
         )
