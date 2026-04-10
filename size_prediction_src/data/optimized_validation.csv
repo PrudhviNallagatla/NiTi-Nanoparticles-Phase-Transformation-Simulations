@@ -1,2 +1,0 @@
-condition,voltage_v,current_a,duty_percent,frequency_khz,sem_avg_nm,zeta_mv,sem_min_nm,sem_median_nm,sem_max_nm,d10_nm,d20_nm,d50_nm,d80_nm,d90_nm
-OPTIMIZED,25,3,30,5,220.93,19.6,47,161,956,90,97,161,306,435

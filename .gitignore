@@ -53,7 +53,10 @@ zips/
 **/restart_files/
 
 # LaTeX build intermediates (keep source and figures)
-paper
+# paper
+paper/paper_for_reference.tex
+paper/main.docx
+paper/figures/
 paper/*.aux
 paper/*.bbl
 paper/*.blg
