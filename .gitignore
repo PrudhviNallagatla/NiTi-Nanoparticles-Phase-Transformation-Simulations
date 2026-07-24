@@ -1,57 +1,29 @@
-# OS/editor
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
-
-# Python
+# Python temporary files
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
 .venv/
 .venv-*/
 venv/
 env/
+.venv-ovito/
 
-# Archives and compressed bundles
+# Ignore archives
 *.zip
-*.tar
-*.tar.gz
-*.tgz
-*.7z
+paper.zip
 
-# LAMMPS and simulation runtime artifacts
-log.lammps
-*.log
-*.dump
-*.restart
-*.lammpstrj
-*.dcd
-*.xtc
-*.trr
-*.bin
-*.data
-*.xyz
-!data/structures/*.xyz  # Keep the initial input structures
+# Ignore specific large directories and private docs
+/data/
+/docs/
+/paper/
+/zips/
+/-p/
+/upload_bundle/
 
-# Large generated datasets and run outputs
-data/analysis_output/*
-data/raw_output/*
-logs/*
-zips/*
+# Ignore specific IDE settings if not needed
+/.vscode/
 
-# Notebook checkpoints
-.ipynb_checkpoints/
-
-# Temporary and restart folders used by workflows
-**/restarts/
-**/restart_files/
-
-# Private publication documents
-docs/
-paper/
+# Ignore LAMMPS runtime logs from the root folder
+/log.lammps

@@ -1,0 +1,66 @@
+LAMMPS (2 Aug 2023 - Update 3)
+  using 1 OpenMP thread(s) per MPI task
+  using 1 OpenMP thread(s) per MPI task
+Reading restart file ...
+  restart file = 2 Aug 2023, LAMMPS = 2 Aug 2023
+  restoring atom style atomic from restart
+  orthogonal box = (18.561209 18.597904 21.330208) to (120.6389 120.83623 118.04971)
+  2 by 2 by 2 MPI processor grid
+  pair style meam stores no restart info
+  37869 atoms
+  read_restart CPU = 0.010 seconds
+dynamic group core defined
+>>> STARTING SME PROTOCOL...
+>>> STAGE 0: Cooling to 200 K
+Unused restart file peratom fix info:
+  fix style: store/state, fix ID: disp_COMPUTE_STORE
+Neighbor list info ...
+  update: every = 1 steps, delay = 10 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7
+  ghost atom cutoff = 7
+  binsize = 3.5, bins = 30 30 28
+  5 neighbor lists, perpetual/occasional/extra = 2 3 0
+  (1) pair meam, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+  (2) pair meam, perpetual, half/full from (1)
+      attributes: half, newton on
+      pair build: halffull/newton
+      stencil: none
+      bin: none
+  (3) compute centro/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+  (4) compute ackland/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+  (5) compute cna/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Setting up Verlet run ...
+  Unit style    : metal
+  Current step  : 0
+  Time step     : 0.002
+Per MPI rank memory allocation (min/avg/max) = 20.28 | 20.51 | 20.83 Mbytes
+   Step          Temp         c_T_core       v_strain    v_sigma_zz_GPa   v_frac_aus    v_cpu_hours  
+         0   500            499.23761      0              0.29174887     0.0066448292   0            
+      1000   503.15289      502.38465      0              0.54195056     0.050438179    0.040666101  
+      2000   479.08907      475.40578      0              0.23990226     0.032786885    0.08013634   
+      3000   483.69805      484.70795      0              0.015852867    0.030735721    0.11793465   
+      4000   479.30189      480.46406      0              0.0068620394   0.039789932    0.15570066   
+      5000   470.45431      468.46323      0             -0.059159626    0.030362625    0.19317072   
+      6000   467.30234      466.10501      0              0.063119793    0.025944105    0.23013743   
+      7000   457.88897      457.66056      0              0.15908824     0.029618425    0.26681883   
+      8000   454.05337      454.72172      0              0.12687856     0.029033354    0.30327832   
+      9000   445.57752      445.93789      0             -0.066511406    0.025363409    0.34059801   
+     10000   439.604        437.27433      0             -0.12427494     0.026746699    0.37787728   
+     11000   435.64594      435.47512      0             -0.08768703     0.028439922    0.41665534   

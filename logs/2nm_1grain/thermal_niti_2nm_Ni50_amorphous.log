@@ -1,0 +1,113 @@
+LAMMPS (2 Aug 2023 - Update 3)
+  using 2 OpenMP thread(s) per MPI task
+  using 2 OpenMP thread(s) per MPI task
+>>> STARTING FRESH from structure
+Reading data file ...
+  orthogonal box = (-10.020352 -8.9727131 -10.136973) to (10.483959 9.1931772 9.9361793)
+  2 by 1 by 2 MPI processor grid
+  reading atoms ...
+  318 atoms
+  reading velocities ...
+  318 velocities
+  read_data CPU = 0.005 seconds
+Neighbor list info ...
+  update: every = 1 steps, delay = 10 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7
+  ghost atom cutoff = 7
+  binsize = 3.5, bins = 6 6 6
+  2 neighbor lists, perpetual/occasional/extra = 2 0 0
+  (1) pair meam, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+  (2) pair meam, perpetual, half/full from (1)
+      attributes: half, newton on
+      pair build: halffull/newton
+      stencil: none
+      bin: none
+Setting up Verlet run ...
+  Unit style    : metal
+  Current step  : 0
+  Time step     : 0.002
+Per MPI rank memory allocation (min/avg/max) = 9.862 | 9.876 | 9.889 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press          Volume    
+         0   0             -1476.9032      0             -1476.9032     -5.0609302      7474.7674    
+Loop time of 1.7e-06 on 8 procs for 0 steps with 318 atoms
+
+dynamic group core defined
+dynamic group surface defined
+Setting up Verlet run ...
+  Unit style    : metal
+  Current step  : 0
+  Time step     : 0.002
+Per MPI rank memory allocation (min/avg/max) = 9.987 | 10 | 10.01 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press          Volume    
+         0   0             -1476.9032      0             -1476.9032     -5.0609302      7474.7674    
+Loop time of 1.225e-06 on 8 procs for 0 steps with 318 atoms
+
+>>> STARTING THERMAL CYCLE
+>>> STAGE 0: Equilibrate Austenite
+Neighbor list info ...
+  update: every = 1 steps, delay = 10 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 7
+  ghost atom cutoff = 7
+  binsize = 3.5, bins = 6 6 6
+  3 neighbor lists, perpetual/occasional/extra = 2 1 0
+  (1) pair meam, perpetual
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+  (2) pair meam, perpetual, half/full from (1)
+      attributes: half, newton on
+      pair build: halffull/newton
+      stencil: none
+      bin: none
+  (3) compute ackland/atom, occasional, copy from (1)
+      attributes: full, newton on
+      pair build: copy
+      stencil: none
+      bin: none
+Setting up Verlet run ...
+  Unit style    : metal
+  Current step  : 0
+  Time step     : 0.002
+Per MPI rank memory allocation (min/avg/max) = 12.52 | 12.53 | 12.54 Mbytes
+   Step          Temp         c_T_core      v_frac_aus   v_SigmaZZ_GPa   v_t_wall_hr  
+         0   500            525.86788      0.18431373     0.31982845     0            
+      1000   471.39966      466.67868      0.094117647    0.64086585     0.0004368932 
+      2000   522.13902      520.76304      0.08627451     0.1640914      0.00086956728
+      3000   494.29542      478.18868      0.062745098    0.15568704     0.001281747  
+      4000   481.9291       483.2264       0.054901961    0.26866844     0.0017103059 
+      5000   562.73692      562.36333      0.065891473   -0.22775491     0.0021466413 
+      6000   519.29326      527.87864      0.034883721    0.50786614     0.0025467132 
+      7000   527.51158      531.9528       0.065891473    0.51118691     0.0029214684 
+      8000   493.90112      484.83705      0.054263566    0.049053975    0.0033246692 
+      9000   512.08334      516.07626      0.085271318   -0.13464359     0.0037126365 
+     10000   535.88087      538.95494      0.098039216    0.21732286     0.0040924536 
+     11000   494.31417      485.18507      0.078431373   -0.0086378668   0.0045215363 
+     12000   499.92005      491.90172      0.10196078     0.23284623     0.004952526  
+     13000   482.83877      482.51064      0.066666667    0.86601514     0.0053516664 
+     14000   475.08825      469.45395      0.10196078    -0.36641638     0.0057611386 
+     15000   498.6032       475.44946      0.10344828     0.33946538     0.0061793557 
+     16000   448.74505      440.1098       0.088122605   -0.12059992     0.0065708649 
+     17000   506.44752      525.51614      0.095785441    0.17935962     0.0069735978 
+     18000   508.24159      497.9883       0.084291188    0.28316308     0.007371047  
+     19000   511.64984      522.29356      0.091954023   -0.29805252     0.0077647087 
+     20000   486.4314       500.46673      0.075757576    0.10427731     0.0081477107 
+     21000   500.5942       510.99737      0.045454545   -0.25692688     0.0085170909 
+     22000   461.30264      470.29691      0.064393939    0.22513512     0.0088941778 
+     23000   501.10394      503.60694      0.10606061     0.40444621     0.0092621101 
+     24000   466.617        461.89967      0.083333333   -0.1989096      0.0096401719 
+     25000   506.21622      505.62342      0.0651341     -0.034008538    0.01002012   
+     26000   508.55335      513.8135       0.15708812    -0.0062706952   0.010435041  
+     27000   492.68489      488.06829      0.095785441   -0.27572391     0.010852391  
+     28000   473.65356      487.00736      0.076628352    0.81914358     0.011250484  
+     29000   468.40232      484.51233      0.068965517    0.10177227     0.011659942  
+     30000   475.82226      470.36002      0.067924528    0.059528348    0.012062551  
+     31000   503.48596      514.11151      0.10566038    -0.081095463    0.012455576  
+     32000   488.08828      496.81292      0.094339623    0.38961406     0.01284714   
+     33000   465.82626      455.40549      0.064150943   -0.26520147     0.013243437  
