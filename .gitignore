@@ -37,13 +37,13 @@ log.lammps
 *.bin
 *.data
 *.xyz
+!data/structures/*.xyz  # Keep the initial input structures
 
 # Large generated datasets and run outputs
-data/analysis_output/
-data/raw_output/
-logs/
-zips/
-*.pdf
+data/analysis_output/*
+data/raw_output/*
+logs/*
+zips/*
 
 # Notebook checkpoints
 .ipynb_checkpoints/
@@ -52,18 +52,6 @@ zips/
 **/restarts/
 **/restart_files/
 
-# LaTeX build intermediates (keep source and figures)
-# paper
-paper/paper_for_reference.tex
-paper/main.docx
-paper/figures/
-paper/*.aux
-paper/*.bbl
-paper/*.blg
-paper/*.fdb_latexmk
-paper/*.fls
-paper/*.log
-paper/*.out
-paper/*.spl
-paper/*.synctex.gz
-paper/*.toc
+# Private publication documents
+docs/
+paper/
