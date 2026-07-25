@@ -33,9 +33,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
-# ==============================================================================
 # CONFIGURATION
-# ==============================================================================
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
@@ -80,9 +78,7 @@ DUMPS = {
     },
 }
 
-# ==============================================================================
 # STYLE
-# ==============================================================================
 plt.rcParams.update(
     {
         "font.family": "serif",
@@ -112,9 +108,7 @@ plt.rcParams.update(
 SINGLE_COL = 3.375
 
 
-# ==============================================================================
 # ANALYSIS
-# ==============================================================================
 def compute_radial_profile(dump_path, n_bins=N_BINS):
     """
     Compute f_Aus as a function of r/r_max.
@@ -254,9 +248,7 @@ def generate_radial_atom_count():
     print("  [OK] Radial atom count figure")
 
 
-# ==============================================================================
 # MAIN
-# ==============================================================================
 if __name__ == "__main__":
     print("=" * 60)
     print("Radial Phase Profile Analysis")

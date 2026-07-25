@@ -4,10 +4,8 @@ import os
 import sys
 import numpy as np
 import matplotlib
-# FORCE HEADLESS MODE (Fixes QDBusError/Display crashes on Linux servers)
 matplotlib.use('Agg') 
 import matplotlib.pyplot as plt
-# Import MaxNLocator to fix the "Missing Grid/Y-values" bug
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator, MaxNLocator
 from scipy.signal import savgol_filter
 from ovito.io import import_file
@@ -18,9 +16,6 @@ from ovito.modifiers import (
     ExpressionSelectionModifier
 )
 
-# ==============================================================================
-# 1. USER CONFIGURATION
-# ==============================================================================
 INPUT_DIR = "/home/rimuru/workspace/data/raw_output/niti_10nm_Ni50_single_crystal/thermal_cycle"
 OUTPUT_DIR = INPUT_DIR.replace("raw_output", "analysis_output")
 
@@ -32,9 +27,6 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
     print(f"I: Created output directory: {OUTPUT_DIR}")
 
-# ==============================================================================
-# 2. PHYSICS PARAMETERS
-# ==============================================================================
 T_LOW  = 200.0
 T_HIGH = 500.0
 RATE   = 0.35
@@ -51,9 +43,6 @@ END_STAGE1 = END_STAGE0 + RUN_RAMP
 END_STAGE2 = END_STAGE1 + RUN_HOLD
 END_STAGE3 = END_STAGE2 + RUN_RAMP
 
-# ==============================================================================
-# 3. ANALYSIS ENGINE
-# ==============================================================================
 def get_temp(step):
     if step <= END_STAGE0: return T_HIGH
     elif step <= END_STAGE1: return T_HIGH - ((step-END_STAGE0)/RUN_RAMP)*(T_HIGH-T_LOW)
@@ -72,7 +61,6 @@ if not files:
 # --- MODIFIERS SETUP ---
 print("I: Configuring OVITO Modifiers...")
 
-# 1. PTM
 ptm = PolyhedralTemplateMatchingModifier(rmsd_cutoff=RMSD, output_orientation=False)
 
 # 2. Strain (Requires Reference Pipeline Source)
@@ -159,9 +147,7 @@ arr = arr[arr[:,9].argsort()]
 # Save raw data
 np.savetxt(f"{OUTPUT_DIR}/extracted_data.txt", arr, header="Temp f_Aus f_Aus_Core f_Aus_Surf PE_Core Shear Stress Clusters Rg Step")
 
-# ==============================================================================
 # 4. PLOTTING ENGINE (FULL SIZE & CORRECT NAMES)
-# ==============================================================================
 print("I: Generating High-Precision Plots...")
 
 # --- A. STYLE CONFIGURATION ---
@@ -255,10 +241,8 @@ fig, axes = plt.subplots(2, 3, figsize=(30, 20))
 fig.suptitle(f"NiTi Thermal Analysis Suite", fontsize=30, fontweight='bold', y=0.96)
 ax_list = axes.flatten()
 
-# 1. Main Hysteresis
 make_detailed_plot(ax_list[0], cool[:,0], cool[:,1], heat[:,0], heat[:,1], r"$f_{Aus}$", "Global Phase Fraction", True)
 
-# 2. Core vs Surface
 ax = ax_list[1]
 ax.plot(cool[:,0], cool[:,2], '-', color='#228B22', label='Core', lw=4)
 ax.plot(cool[:,0], cool[:,3], '--', color='#800080', label='Surface', lw=4)
@@ -270,16 +254,13 @@ ax.grid(True, alpha=0.4)
 ax.legend(fontsize=14)
 ax.invert_xaxis()
 
-# 3. Energy
 make_detailed_plot(ax_list[2], cool[:,0], cool[:,4], heat[:,0], heat[:,4], "PE (eV)", "Thermodynamics")
 
-# 4. Stress
 make_detailed_plot(ax_list[3], cool[:,0], cool[:,6], heat[:,0], heat[:,6], "Stress (GPa)", "Internal Stress")
 
 # 5. Breathing (Rg) - Replaced Clusters with Breathing per your interest
 make_detailed_plot(ax_list[4], cool[:,0], cool[:,8], heat[:,0], heat[:,8], r"$R_g$ ($\AA$)", "Geometric Breathing")
 
-# 6. Kinetics
 ax = ax_list[5]
 valid_mask = np.insert(np.diff(cool[:,0]) != 0, 0, True) 
 T_clean = cool[valid_mask, 0]
@@ -301,9 +282,6 @@ ax.invert_xaxis()
 plt.subplots_adjust(left=0.05, right=0.95, top=0.92, bottom=0.05, wspace=0.25, hspace=0.25)
 plt.savefig(f"{OUTPUT_DIR}/MASTER_DASHBOARD_FULL.png", dpi=300)
 
-# ==============================================================================
-# 5. TRANSFORMATION CALCULATOR
-# ==============================================================================
 print("\nI: Calculating Critical Temperatures...")
 
 f_min, f_max = np.min(arr[:, 1]), np.max(arr[:, 1])

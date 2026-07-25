@@ -15,7 +15,6 @@ Figure Plan:
   Fig S1 - SE: cluster count vs strain
   Fig S2 - Thermal: core vs surface austenite fraction
 
-Author: auto-generated for publication
 """
 
 import os
@@ -27,9 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 
-# ==============================================================================
 # PATH CONFIGURATION
-# ==============================================================================
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 DATA = {
@@ -80,9 +77,7 @@ DATA = {
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
 
-# ==============================================================================
 # STYLE CONFIGURATION - publication quality
-# ==============================================================================
 # Colors
 C5 = "#0072B2"  # blue  (5 nm)
 C10 = "#D55E00"  # vermillion (10 nm)
@@ -130,9 +125,7 @@ SINGLE_COL = 3.375  # inches (APS/Elsevier single column)
 DOUBLE_COL = 7.0  # inches (double column)
 
 
-# ==============================================================================
 # DATA LOADING
-# ==============================================================================
 def load_thermal(path):
     """Load thermal cycle extracted data.
     Columns: Temp f_Aus f_Aus_Core f_Aus_Surf PE_Core Shear Stress Clusters Rg Step
@@ -215,9 +208,7 @@ def split_load_unload(data):
     return load, unload
 
 
-# ==============================================================================
 # FIGURE 2: f_Aus(T) — Thermal Hysteresis
-# ==============================================================================
 def fig2_thermal_hysteresis():
     """f_Aus vs Temperature for both NP sizes."""
     fig, (ax1, ax2) = plt.subplots(
@@ -288,9 +279,7 @@ def fig2_thermal_hysteresis():
     print("  [OK] Fig 2: Thermal hysteresis")
 
 
-# ==============================================================================
 # FIGURE 3: PE_core(T) and Rg(T)
-# ==============================================================================
 def fig3_pe_rg_thermal():
     """Dual-panel: PE_core and Rg vs Temperature."""
     fig, axes = plt.subplots(2, 2, figsize=(DOUBLE_COL, 4.5), sharex="col")
@@ -352,9 +341,7 @@ def fig3_pe_rg_thermal():
     print("  [OK] Fig 3: PE and Rg thermal")
 
 
-# ==============================================================================
 # FIGURE 4: Stress-Strain (Superelasticity)
-# ==============================================================================
 def fig4_stress_strain():
     """Compressive stress-strain curves for both NP sizes."""
     fig, ax = plt.subplots(figsize=(SINGLE_COL, 2.8))
@@ -404,9 +391,7 @@ def fig4_stress_strain():
     print("  [OK] Fig 4: Stress-strain")
 
 
-# ==============================================================================
 # FIGURE 5: f_Aus decomposition during SE
-# ==============================================================================
 def fig5_phase_fraction_se():
     """f_Aus (total, core, surface) vs strain for both sizes."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(DOUBLE_COL, 2.8), sharey=True)
@@ -472,9 +457,7 @@ def fig5_phase_fraction_se():
     print("  [OK] Fig 5: Phase fraction SE")
 
 
-# ==============================================================================
 # FIGURE S1: Cluster count evolution during SE
-# ==============================================================================
 def figS1_clusters_se():
     """Number of non-B2 clusters vs strain."""
     fig, ax = plt.subplots(figsize=(SINGLE_COL, 2.8))
@@ -508,9 +491,7 @@ def figS1_clusters_se():
     print("  [OK] Fig S1: Cluster count SE")
 
 
-# ==============================================================================
 # FIGURE S2: Core vs Surface in thermal cycle
-# ==============================================================================
 def figS2_core_surf_thermal():
     """f_Aus_core and f_Aus_surf vs T for both sizes."""
     fig, (ax1, ax2) = plt.subplots(
@@ -555,9 +536,7 @@ def figS2_core_surf_thermal():
     print("  [OK] Fig S2: Core vs Surface thermal")
 
 
-# ==============================================================================
 # FIGURE 6 (bonus): Size-comparison summary panel
-# ==============================================================================
 def fig6_size_comparison():
     """4-panel: stress-strain overlay, f_aus overlay, PE_core(strain), Rg(strain)."""
     fig, axes = plt.subplots(2, 2, figsize=(DOUBLE_COL, 4.5))
@@ -634,9 +613,7 @@ def fig6_size_comparison():
     print("  [OK] Fig 6: Size comparison")
 
 
-# ==============================================================================
 # MAIN
-# ==============================================================================
 if __name__ == "__main__":
     print("=" * 60)
     print("Generating publication figures...")

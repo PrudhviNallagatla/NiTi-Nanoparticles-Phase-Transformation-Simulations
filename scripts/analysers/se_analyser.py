@@ -18,9 +18,6 @@ from ovito.modifiers import (
     ExpressionSelectionModifier,
 )
 
-# ==============================================================================
-# 1. USER CONFIGURATION
-# ==============================================================================
 INPUT_DIR = "/home/rimuru/workspace/data/raw_output/niti_10nm_Ni50_single_crystal/se"
 OUTPUT_DIR = INPUT_DIR.replace("raw_output", "analysis_output")
 
@@ -32,9 +29,6 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
     print(f"I: Created output directory: {OUTPUT_DIR}")
 
-# ==============================================================================
-# 2. PHYSICS PARAMETERS
-# ==============================================================================
 STRAIN_MAX = 0.10
 DT = 0.002
 RMSD = 0.15
@@ -48,9 +42,6 @@ END_LOAD = EQ_OFFSET + STEPS_LOAD
 END_UNLOAD = END_LOAD + STEPS_UNLOAD
 
 
-# ==============================================================================
-# 3. ANALYSIS ENGINE
-# ==============================================================================
 def get_strain(step):
     """Maps timestep to Engineering Strain (compressive = positive)."""
     if step < EQ_OFFSET:
@@ -237,9 +228,6 @@ np.savetxt(
     header="Strain Stress_GPa f_Aus f_Aus_Core f_Aus_Surf PE_Core Clusters Rg Step",
 )
 
-# ==============================================================================
-# 4. PLOTTING SETUP
-# ==============================================================================
 C_LOAD = "#1f77b4"
 C_UNLOAD = "#d62728"
 C_CORE = "#2ca02c"
@@ -338,9 +326,6 @@ rg_unload = d_unload[:, 7]
 step_load = d_load[:, 8]
 step_unload = d_unload[:, 8]
 
-# ==============================================================================
-# 5. GENERATE PDF WITH ALL GRAPHS
-# ==============================================================================
 pdf_path = os.path.join(OUTPUT_DIR, "Journal_SE_Complete_Analysis.pdf")
 print(f"\nI: Generating comprehensive PDF: {pdf_path}")
 

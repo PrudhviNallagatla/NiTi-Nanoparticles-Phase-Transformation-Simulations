@@ -14,7 +14,6 @@ Figure Plan:
   Fig 1(c,d) - Equilibrated NPs (PTM colored, whole + cross-section), 10 nm
   Fig 7      - SE snapshots at key strains: ε=0%, 5%, 10%, 5%(unload), 0%(recovered)
 
-Author: auto-generated for publication
 """
 
 import os
@@ -71,9 +70,7 @@ except Exception as exc:
     )
     sys.exit(1)
 
-# ==============================================================================
 # PATH CONFIGURATION
-# ==============================================================================
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
@@ -100,9 +97,7 @@ STRAIN_MAX = 0.10
 STEPS_LOAD = 1000000
 EQ_OFFSET = 1000
 
-# ==============================================================================
 # COLOR MAP — PTM Structure Types
-# ==============================================================================
 # OVITO PTM Structure Types:
 # 0 = Other, 1 = FCC, 2 = HCP, 3 = BCC (B2 austenite), 4 = ICO, 5 = SC
 # We use a publication-friendly color scheme:
@@ -252,9 +247,7 @@ def render_viewport(
         pipeline.remove_from_scene()
 
 
-# ==============================================================================
 # FIGURE 1: Equilibrated NPs
-# ==============================================================================
 def fig1_equilibrium_renderings():
     """Render equilibrated NPs: whole view and cross-section for both sizes."""
     print("\n--- Figure 1: Equilibrated nanoparticle renderings ---")
@@ -284,9 +277,7 @@ def fig1_equilibrium_renderings():
         )
 
 
-# ==============================================================================
 # FIGURE 7: SE Snapshots at Key Strains
-# ==============================================================================
 def fig7_se_snapshots():
     """Render cross-section snapshots at key strains during SE loading/unloading."""
     print("\n--- Figure 7: SE cross-section snapshots ---")
@@ -329,9 +320,7 @@ def fig7_se_snapshots():
             )
 
 
-# ==============================================================================
 # COLOR LEGEND GENERATOR
-# ==============================================================================
 def generate_color_legend():
     """Create a standalone color legend image for PTM structure types."""
     import matplotlib
@@ -378,9 +367,7 @@ def generate_color_legend():
     print("  [OK] PTM color legend")
 
 
-# ==============================================================================
 # MAIN
-# ==============================================================================
 if __name__ == "__main__":
     print("=" * 60)
     print("OVITO Python Rendering Pipeline")

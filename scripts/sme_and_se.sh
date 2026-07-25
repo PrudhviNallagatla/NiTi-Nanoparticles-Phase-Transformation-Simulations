@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Configurations
 PROJECT_ROOT="/home/rimuru/workspace"
 LAMMPS_BIN="/usr/local/bin/lmp"
 
-# Inputs
 MINIMIZE_IN="${PROJECT_ROOT}/src/lmps/minimize.lmp"
 THERMAL_IN="${PROJECT_ROOT}/src/lmps/thermal_cycle.lmp"
 SE_IN="${PROJECT_ROOT}/src/lmps/se.lmp"
@@ -15,25 +13,21 @@ POT_FILE="${PROJECT_ROOT}/potentials/NiTi.meam"
 
 DATA_FILES=("${PROJECT_ROOT}/data/structures/niti_10nm_Ni50_single_crystal.data")
 
-# Outputs
 RAW_OUT_ROOT="${PROJECT_ROOT}/data/raw_output"
 LOG_DIR="${PROJECT_ROOT}/logs"
 mkdir -p "${LOG_DIR}" "${RAW_OUT_ROOT}"
 
-# Resources
 export OMP_NUM_THREADS=1
 export MPI_RANKS=8
 
 echo ">>> RUNNING WITH ${MPI_RANKS} CORES"
 
-# ----------------------------
-# 1) MINIMIZATION
-# ----------------------------
+# Minimization
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
   dir="${RAW_OUT_ROOT}/${name}/minimize"
   mkdir -p "${dir}/restarts"
-  
+
   if [[ -f "${dir}/final_minimized.data" ]]; then
     echo ">>> Skipping Min (Found)"
   else
@@ -43,14 +37,12 @@ for datafile in "${DATA_FILES[@]}"; do
   fi
 done
 
-# ----------------------------
-# 2) THERMAL
-# ----------------------------
+# Thermal cycle
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
   dir="${RAW_OUT_ROOT}/${name}/thermal_cycle"
   mkdir -p "${dir}/restart_files"
-  
+
   if [[ -f "${dir}/restart_files/restart.stage4_end" ]]; then
     echo ">>> Skipping Thermal (Found)"
   else
@@ -62,17 +54,14 @@ for datafile in "${DATA_FILES[@]}"; do
   fi
 done
 
-# ----------------------------
-# 3) SME (Shape Memory Effect)
-# ----------------------------
+# SME — starts from low-T martensite (stage 2 end of thermal cycle)
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
   dir="${RAW_OUT_ROOT}/${name}/sme"
-  # SME starts from Low Temp (Stage 2 End)
   restart_lo="${RAW_OUT_ROOT}/${name}/thermal_cycle/restart_files/restart.stage2_end"
-  
+
   mkdir -p "${dir}/restarts"
-  
+
   if [[ -f "${dir}/final.data" ]]; then
     echo ">>> Skipping SME (Found)"
   else
@@ -84,17 +73,14 @@ for datafile in "${DATA_FILES[@]}"; do
   fi
 done
 
-# ----------------------------
-# 4) SE (Superelasticity)
-# ----------------------------
+# SE — starts from high-T austenite (stage 4 end of thermal cycle)
 for datafile in "${DATA_FILES[@]}"; do
   name=$(basename "${datafile}" .data)
   dir="${RAW_OUT_ROOT}/${name}/se"
-  # SE starts from High Temp (Stage 4 End)
   restart_hi="${RAW_OUT_ROOT}/${name}/thermal_cycle/restart_files/restart.stage4_end"
-  
+
   mkdir -p "${dir}/restarts"
-  
+
   if [[ -f "${dir}/final.data" ]]; then
     echo ">>> Skipping SE (Found)"
   else

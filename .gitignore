@@ -21,6 +21,7 @@ paper.zip
 /zips/
 /-p/
 /upload_bundle/
+.legacy_scripts_bloatedbutworking/
 
 # Ignore specific IDE settings if not needed
 /.vscode/
