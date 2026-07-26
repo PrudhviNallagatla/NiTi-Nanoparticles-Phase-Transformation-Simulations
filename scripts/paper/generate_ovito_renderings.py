@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 OVITO Python Rendering Script for NiTi Nanoparticle MD Paper
 =============================================================
@@ -27,13 +27,13 @@ import warnings
 import numpy as np
 
 try:
-    # If OVITO was installed from PyPI into an Anaconda environment, OVITO warns
-    # that Qt library conflicts are likely. Suppress the warning noise and try
-    # OVITO's recommended import sequence.
+                                                                                
+                                                                              
+                                          
     warnings.filterwarnings("ignore", message=".*OVITO.*PyPI")
 
-    # Recommended by OVITO docs for some environments.
-    import ovito._extensions.pyscript  # noqa: F401
+                                                      
+    import ovito._extensions.pyscript              
 
     from ovito.io import import_file
     from ovito.modifiers import (
@@ -70,14 +70,14 @@ except Exception as exc:
     )
     sys.exit(1)
 
-# PATH CONFIGURATION
+                    
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
 
 RAW_BASE = os.path.join(REPO_ROOT, "data", "raw_output")
 
-# Minimized equilibrium dumps (at 500 K, step 0 of SE = post-equilibration)
+                                                                           
 EQUILIBRIUM_DUMPS = {
     "5nm": os.path.join(RAW_BASE, "niti_5nm_Ni50_single_crystal", "se", "dump.se.0.gz"),
     "10nm": os.path.join(
@@ -85,38 +85,38 @@ EQUILIBRIUM_DUMPS = {
     ),
 }
 
-# SE dump directories
+                     
 SE_DIRS = {
     "5nm": os.path.join(RAW_BASE, "niti_5nm_Ni50_single_crystal", "se"),
     "10nm": os.path.join(RAW_BASE, "niti_10nm_Ni50_single_crystal", "se"),
 }
 
-# Physics parameters from SE script
+                                   
 RMSD = 0.15
 STRAIN_MAX = 0.10
 STEPS_LOAD = 1000000
 EQ_OFFSET = 1000
 
-# COLOR MAP — PTM Structure Types
-# OVITO PTM Structure Types:
-# 0 = Other, 1 = FCC, 2 = HCP, 3 = BCC (B2 austenite), 4 = ICO, 5 = SC
-# We use a publication-friendly color scheme:
+                                 
+                            
+                                                                      
+                                             
 PTM_COLORS = {
-    0: (0.75, 0.75, 0.75, 1.0),  # Other    -> light gray
-    1: (0.12, 0.47, 0.71, 1.0),  # FCC      -> blue
-    2: (1.00, 0.50, 0.05, 1.0),  # HCP      -> orange
-    3: (0.17, 0.63, 0.17, 1.0),  # BCC (B2) -> green
-    4: (0.84, 0.15, 0.16, 1.0),  # ICO      -> red
-    5: (0.58, 0.40, 0.74, 1.0),  # SC       -> purple
+    0: (0.75, 0.75, 0.75, 1.0),                          
+    1: (0.12, 0.47, 0.71, 1.0),                    
+    2: (1.00, 0.50, 0.05, 1.0),                      
+    3: (0.17, 0.63, 0.17, 1.0),                     
+    4: (0.84, 0.15, 0.16, 1.0),                   
+    5: (0.58, 0.40, 0.74, 1.0),                      
 }
 
-PARTICLE_RADIUS = 0.8  # Å for rendering
+PARTICLE_RADIUS = 0.8                   
 
 
 def step_from_strain(strain):
     """Convert target strain to nearest dump timestep."""
     step = int(EQ_OFFSET + (strain / STRAIN_MAX) * STEPS_LOAD)
-    # Round to nearest 5000 (dump interval)
+                                           
     step = round(step / 5000) * 5000
     return step
 
@@ -135,7 +135,7 @@ def find_dump_file(directory, step):
     exact = os.path.join(directory, f"dump.se.{step}.gz")
     if os.path.exists(exact):
         return exact
-    # No exact match: find closest
+                                  
     files = glob.glob(os.path.join(directory, "dump.se.*.gz"))
     best = None
     best_diff = float("inf")
@@ -169,32 +169,32 @@ def setup_pipeline(dump_path, slice_np=False):
     """Create an OVITO pipeline with PTM and optional cross-section slice."""
     pipeline = import_file(dump_path)
 
-    # Disable simulation cell wireframe (the black bounding box)
+                                                                
     if pipeline.source.data.cell is not None:
         pipeline.source.data.cell.vis.enabled = False
 
-    # PTM modifier
+                  
     ptm = PolyhedralTemplateMatchingModifier(rmsd_cutoff=RMSD, output_orientation=False)
     pipeline.modifiers.append(ptm)
 
-    # Apply PTM-based coloring inside the pipeline so the renderer sees it
+                                                                          
     pipeline.modifiers.append(PythonScriptModifier(function=apply_ptm_colors))
 
     if slice_np:
-        # We need to compute the particle COM first, then set the slice
-        # distance dynamically so the slab is centered on the nanoparticle.
+                                                                       
+                                                                           
         data_tmp = pipeline.compute()
         pos = np.asarray(data_tmp.particles.position)
         com_y = float(np.mean(pos[:, 1]))
 
-        # Estimate a good slab width: ~20% of the particle diameter
+                                                                   
         r_from_com = np.sqrt(np.sum((pos - np.mean(pos, axis=0)) ** 2, axis=1))
         diameter = 2.0 * np.max(r_from_com)
-        slab_w = max(10.0, 0.20 * diameter)  # at least 10 Å
+        slab_w = max(10.0, 0.20 * diameter)                 
 
         slicer = SliceModifier(
             distance=com_y,
-            normal=(0, 1, 0),  # cut along Y
+            normal=(0, 1, 0),               
             slab_width=slab_w,
         )
         pipeline.modifiers.append(slicer)
@@ -206,28 +206,28 @@ def render_viewport(
     pipeline, output_path, size_px=(1600, 1600), camera_dir=(0, 0, -1), zoom_factor=1.0
 ):
     """Render the pipeline from a given camera direction."""
-    # Configure particle appearance before adding to scene
+                                                          
     vis = pipeline.source.data.particles.vis
     if vis is not None:
         vis.radius = PARTICLE_RADIUS
         vis.shape = ParticlesVis.Shape.Sphere
 
-    # OVITO renders what is currently in the global scene. Add the pipeline to
-    # the scene for rendering and remove it again afterwards.
+                                                                              
+                                                             
     pipeline.add_to_scene()
     try:
-        # Force a compute so the pipeline is up-to-date
+                                                       
         pipeline.compute()
 
-        # Set up viewport
+                         
         vp = Viewport(type=Viewport.Type.Ortho, camera_dir=camera_dir)
         vp.zoom_all(size=size_px)
 
-        # Apply zoom
+                    
         if zoom_factor != 1.0:
             vp.fov *= zoom_factor
 
-        # Render with Tachyon
+                             
         renderer = TachyonRenderer(
             shadows=False,
             ambient_occlusion=True,
@@ -240,14 +240,14 @@ def render_viewport(
             size=size_px,
             filename=output_path,
             renderer=renderer,
-            background=(1, 1, 1),  # white background
+            background=(1, 1, 1),                    
         )
         print(f"  Rendered: {os.path.basename(output_path)}")
     finally:
         pipeline.remove_from_scene()
 
 
-# FIGURE 1: Equilibrated NPs
+                            
 def fig1_equilibrium_renderings():
     """Render equilibrated NPs: whole view and cross-section for both sizes."""
     print("\n--- Figure 1: Equilibrated nanoparticle renderings ---")
@@ -258,7 +258,7 @@ def fig1_equilibrium_renderings():
             print(f"  WARNING: Missing {dump_path}, skipping {size}")
             continue
 
-        # (a/c) Whole nanoparticle
+                                  
         pipeline = setup_pipeline(dump_path, slice_np=False)
         render_viewport(
             pipeline,
@@ -267,7 +267,7 @@ def fig1_equilibrium_renderings():
             zoom_factor=1.1,
         )
 
-        # (b/d) Cross-section
+                             
         pipeline = setup_pipeline(dump_path, slice_np=True)
         render_viewport(
             pipeline,
@@ -277,12 +277,12 @@ def fig1_equilibrium_renderings():
         )
 
 
-# FIGURE 7: SE Snapshots at Key Strains
+                                       
 def fig7_se_snapshots():
     """Render cross-section snapshots at key strains during SE loading/unloading."""
     print("\n--- Figure 7: SE cross-section snapshots ---")
 
-    # Target strains: equilibrium, 5% load, 10% (peak), 5% unload, 0% (recovered)
+                                                                                 
     targets = [
         ("eq", 0.00, "load"),
         ("5pct_load", 0.05, "load"),
@@ -302,7 +302,7 @@ def fig7_se_snapshots():
                     step = step_from_strain(strain)
             else:
                 if strain == 0.0:
-                    step = 2000000  # final step
+                    step = 2000000              
                 else:
                     step = step_unload_from_strain(strain)
 
@@ -320,7 +320,7 @@ def fig7_se_snapshots():
             )
 
 
-# COLOR LEGEND GENERATOR
+                        
 def generate_color_legend():
     """Create a standalone color legend image for PTM structure types."""
     import matplotlib
@@ -367,7 +367,7 @@ def generate_color_legend():
     print("  [OK] PTM color legend")
 
 
-# MAIN
+      
 if __name__ == "__main__":
     print("=" * 60)
     print("OVITO Python Rendering Pipeline")

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 Generate high-value publication figures for the NiTi/Nitinol nanoparticle paper.
 
@@ -67,8 +67,8 @@ PATHS = {
     },
 }
 
-# Protocol landmarks used in existing analysis scripts.
-END_STAGE1 = 478571  # end of cooling branch
+                                                       
+END_STAGE1 = 478571                         
 EQ_OFFSET = 1000
 END_LOAD = 1001000
 
@@ -134,7 +134,7 @@ def load_se(path):
 
 
 def load_se_raw(path):
-    # Step T_Global T_Core Lz Strain SigmaZZ(GPa) ...
+                                                     
     d = np.loadtxt(path, comments="#")
     return {
         "step": d[:, 0],

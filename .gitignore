@@ -20,8 +20,9 @@ paper.zip
 /paper/
 /zips/
 /-p/
-/upload_bundle/
+/nomad_upload_bundle/
 .legacy_scripts_bloatedbutworking/
+/nomad_upload_bundle.zip
 
 # Ignore specific IDE settings if not needed
 /.vscode/

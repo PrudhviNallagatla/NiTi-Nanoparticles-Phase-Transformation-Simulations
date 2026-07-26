@@ -1,218 +1,81 @@
-# NiTi Nanoparticle SME/SE Simulation Workspace
+# Transformation Exclusion Zone and Stress-Induced Superelastic Response in Free-Standing NiTi Nanoparticles: A Simulation Study
 
-This repository houses a high-throughput computational workflow for simulating **Nickel-Titanium (NiTi)** nanoparticles using Molecular Dynamics (MD). It is designed to investigate two critical material behaviors—the **Shape Memory Effect (SME)** and **Superelasticity (SE)**—under realistic synthesis conditions.
+![LAMMPS](https://img.shields.io/badge/LAMMPS-stable__2Aug2023__update3-blue)
+![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
+![License](https://img.shields.io/badge/License-MIT-green)
+![DOI](https://img.shields.io/badge/DOI-Pending-lightgrey)
 
-## 📂 Repository Structure
+## Overview
 
-The workspace keeps the simulation inputs, analysis scripts, manuscript assets, and generated outputs separate. Large dump, restart, and analysis-result files are intentionally collapsed here.
+This repository provides a comprehensive computational framework for simulating the thermomechanical behaviors of Nickel-Titanium (NiTi) nanoparticles using Large-scale Atomic/Molecular Massively Parallel Simulator (LAMMPS). The developed input scripts and integrated Python analysis tools enable the precise modeling of complex phase transformations at the nanoscale. By leveraging this workspace, researchers can systematically investigate both the Shape Memory Effect (SME) and Superelasticity (SE) phenomena, facilitating a deeper understanding of martensitic transformations in advanced shape memory alloys.
 
-```text
-.
-├── all_dependencies.sh
-├── log.lammps
-├── README.md
-├── docs/
-│   ├── acta_revision_master_todo.md
-│   ├── Azure_workflow.md
-│   ├── NiTi_Nanoparticle_MD_Report.md
-│   ├── response_letter_draft.md
-│   └── reviewer_response_matrix.md
-├── paper/
-│   ├── main.tex
-│   ├── paper_for_reference.tex
-│   ├── references.bib
-│   ├── elsarticle.cls
-│   ├── elsarticle-harv.bst
-│   ├── elsarticle-num.bst
-│   ├── elsarticle-num-names.bst
-│   └── figures/
-├── potentials/
-│   ├── Ni-Ti.eam.fs
-│   ├── NiTi.meam
-│   ├── library.meam
-│   ├── NiTi_graph_v1.pb
-│   └── NiTi_graph_v2.pb
-├── scripts/
-│   ├── run_size_predictor.sh
-│   ├── se.sh
-│   ├── sme.sh
-│   ├── sme_and_se.sh
-│   ├── structure_gen_ase.sh
-│   ├── thermal_cycle_script.sh
-│   ├── zip_it_all.sh
-│   ├── analysers/
-│   │   ├── se_analyser.py
-│   │   ├── thermal_analyser.py
-│   │   ├── thermal_event_radial_probe.py
-│   │   ├── revision_prewrite_analysis.py
-│   │   ├── ovito_revision_checks.py
-│   │   ├── rphase_proxy_analysis.py
-│   │   ├── rphase_cna_aj_scan.py
-│   │   └── .legacy_scripts/
-│   │       ├── hysteresis_analyser.py
-│   │       └── analyze_thermal_cycle.py
-│   └── paper/
-│       ├── generate_data_figures.py
-│       ├── generate_high_value_figures.py
-│       ├── generate_ovito_renderings.py
-│       ├── generate_radial_profile.py
-│       └── generate_revision_figures.py
-├── src/
-│   ├── ase_np_gen.py
-│   ├── niti_np_gen.py
-│   └── lmps/
-│       ├── minimize.lmp
-│       ├── se.lmp
-│       ├── sme.lmp
-│       └── thermal_cycle.lmp
-├── data/
-│   ├── structures/
-│   │   ├── niti_5nm_Ni50_single_crystal.xyz
-│   │   └── niti_10nm_Ni50_single_crystal.xyz
-│   ├── raw_output/
-│   │   ├── niti_2nm_Ni50_amorphous/
-│   │   ├── niti_5nm_Ni50_single_crystal/
-│   │   └── niti_10nm_Ni50_single_crystal/
-│   └── analysis_output/
-│       ├── niti_2nm_Ni50_amorphous/
-│       ├── niti_5nm_Ni50_single_crystal/
-│       ├── niti_10nm_Ni50_single_crystal/
-│       └── uncategorized/
-├── logs/
-│   ├── 2nm_1grain/
-│   └── 5nm_1grain/
-├── zips/
-└── .devcontainer/
+## Theoretical Background
+
+Nickel-Titanium alloys exhibit remarkable thermomechanical properties driven by solid-state phase transformations between the high-temperature Austenite phase and the low-temperature Martensite phase. The Shape Memory Effect manifests when the nanoparticle undergoes mechanical deformation while in the Martensite phase. Upon subsequent heating, the material transitions back to the Austenite phase, entirely recovering its original, undeformed geometry. This temperature-induced structural recovery forms the basis of numerous engineering and biomedical applications.
+
+In contrast, Superelasticity occurs when mechanical stress is applied to the nanoparticle while it is in the high-temperature Austenite phase. The applied stress induces a transition to the Martensite phase, allowing the material to accommodate massive deformations. Upon the removal of the mechanical load, the material spontaneously reverts to the Austenite phase and recovers its original shape without requiring thermal activation. This reversible, stress-induced transformation yields a characteristic flag-shaped hysteresis loop during the loading and unloading cycles.
+
+## Computational Methodology
+
+The simulation workflow requires a strict sequential execution to ensure thermodynamic stability and accurate phase representations. Initially, a thermal baseline must be established to equilibrate the nanoparticle and facilitate the baseline phase transformation. Following this thermal cycling, the phase fractions must be rigorously validated. It is critical to confirm that the nanoparticle consists entirely of the Martensite phase at the target low temperature and the Austenite phase at the target high temperature. Only after verifying these thermal baselines can the subsequent mechanical tests for the Shape Memory Effect and Superelasticity be executed accurately.
+
+## Installation & Dependencies
+
+To ensure a fully reproducible computational environment and avoid local dependency conflicts, it is highly recommended to run this repository either as a standalone Docker container or as a Devcontainer within Visual Studio Code. 
+
+A comprehensive bash script (`all_dependencies.sh`) is provided for environment configuration. When building the container, this script automatically handles the installation of all required dependencies, including system packages, Python libraries (such as NumPy, SciPy, Matplotlib, pandas, ase, and ovito), and the specific version of LAMMPS (`stable_2Aug2023_update3`) configured with necessary packages (MEAM, MANYBODY, PTM, VORONOI, and MPI).
+
+If setting up the environment manually within a container, run:
+
+```bash
+chmod +x all_dependencies.sh
+./all_dependencies.sh
 ```
 
-* **`src/lmps/`**: LAMMPS input scripts for minimization, thermal cycling, SME, and SE.
-* **`scripts/analysers/`**: Python post-processing scripts for phase analysis, thermal analysis, and paper figures.
-* **`scripts/paper/`**: Figure-generation scripts used to build the manuscript graphics.
-* **`paper/`**: LaTeX manuscript, bibliography, and class/style files.
-* **`data/`**: Input structures plus raw and processed simulation outputs.
-* **`potentials/`**: Interatomic potential files and related graph models.
-* **`docs/`**: Revision notes, response materials, and manuscript support documents.
+## Execution Protocol
 
-Generated dump, restart, and analysis files are omitted from the tree above for readability; the directory structure is preserved where those artifacts live.
+The simulations must be executed sequentially, establishing the thermal baseline before proceeding to the mechanical deformation tests.
 
----
+1. **Establish the Thermal Baseline:**
+   ```bash
+   lmp -in src/lmps/thermal_cycle.lmp
+   ```
 
-## ⚙️ Simulation Protocol (How to Proceed)
+2. **Validate Phase Fractions:**
+   Utilize the Python analysis scripts located in the `scripts/analysers/` directory. Ensure the nanoparticle exhibits a 100% Martensite composition at the low-temperature limit and a 100% Austenite composition at the high-temperature limit.
 
-This workflow is sequential. You cannot run the mechanical tests (SME/SE) until you have successfully established the thermal baseline.
+3. **Execute Mechanical Tests:**
+   Once the thermal baseline is validated, the mechanical tests can be run concurrently.
+   
+   For the Shape Memory Effect:
+   ```bash
+   lmp -in src/lmps/sme.lmp
+   ```
+   
+   For Superelasticity:
+   ```bash
+   lmp -in src/lmps/se.lmp
+   ```
 
-### Step 1: Establish the Thermal Baseline (`thermal_cycle`)
+## Repository Architecture
 
-**What it does:**
-This simulation takes your generated nanoparticle and runs it through a full heating and cooling loop. It heats the particle to a high temperature (Austenite phase) and cools it to a low temperature (Martensite phase).
+The workspace is organized to separate simulation inputs, analytical tools, and documentation:
 
-**Why it is needed:**
-Real materials have a "thermal history." You cannot simply start a simulation at 0 Kelvin. This step generates "Restart Files"—snapshots of the atoms at critical points (fully cooled, fully heated)—which serve as the starting points for the next steps.
+* `src/lmps/`: LAMMPS input scripts encompassing energy minimization, thermal cycling, Shape Memory Effect, and Superelasticity simulations.
+* `scripts/`: Python post-processing utilities designed for hysteresis loop analysis, phase fraction calculation, and publication-quality figure generation.
+* `potentials/`: Interatomic potential files, specifically the modified embedded-atom method (MEAM) potential for Ni-Ti systems.
+* `data/`: Initial crystallographic structures and resulting simulation output trajectories.
+* `paper/` and `docs/`: LaTeX manuscript source files and supplementary documentation.
 
-**Action:**
-Run the thermal cycle simulation first. Wait for it to complete the full loop (Heating  Cooling  Heating).
+## Data Availability
 
-### Step 2: Validate the Physics (Critical Analysis)
+Upon publication, the full simulation dataset and trajectories from this repository will be archived and openly accessible on the [NOMAD (Novel Materials Discovery)](https://nomad-lab.eu/) repository, at which point a permanent DOI will be minted and added to this document.
 
-**What it is:**
-Before running mechanical tests, you must verify that your particle actually transformed.
+## License
 
-* ** (Martensite Finish):** The temperature where the particle becomes fully Martensite.
-* ** (Austenite Finish):** The temperature where the particle becomes fully Austenite.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for complete details.
 
-**How to do it:**
-Use the analysis tools to look at the "Phase Fraction" from Step 1.
+## References
 
-1. Check if the particle is **100% Martensite** at your target low temperature (e.g., 200K).
-2. Check if the particle is **100% Austenite** at your target high temperature (e.g., 500K).
-
-**Decision:**
-
-* If the particle is *not* fully Martensite at 200K, you must lower the temperature in the SME script.
-* If the particle is *not* fully Austenite at 500K, you must raise the temperature in the SE script.
-
-### Step 3: Mechanical Testing
-
-Once the thermal baseline is verified, you can run the following two simulations. They are independent and can be run simultaneously.
-
-#### A. Shape Memory Effect (`sme`)
-
-**The Goal:** Demonstrate that the material can "remember" its original shape.
-**The Process:**
-
-1. **Load:** The simulation picks up the "Fully Cooled" snapshot from Step 1.
-2. **Deform:** It mechanically crushes (compresses) the particle at low temperature. The material stays deformed after unloading.
-3. **Recover:** It heats the particle back up. If successful, the particle will spontaneously snap back to its original shape.
-
-#### B. Superelasticity (`se`)
-
-**The Goal:** Demonstrate rubber-like elasticity at high temperatures.
-**The Process:**
-
-1. **Load:** The simulation picks up the "Fully Heated" snapshot from Step 1.
-2. **Cycle:** It compresses and releases the particle at high temperature.
-3. **Result:** unlike normal metals, it should recover massive strains immediately upon unloading, producing a characteristic "flag-shaped" hysteresis loop in the data.
-
----
-
-## 💻 Hardware & Execution Environment
-
-These simulations are computationally expensive due to the complexity of the MEAM potential. A standard laptop is generally insufficient for production runs.
-
-### Recommended Hardware
-
-* **CPU Architecture:**
-* **Minimum:** 8 Physical Cores (e.g., Modern Ryzen 7 / Intel i7).
-* **Recommended:** 16-32 Physical Cores (Workstation or HPC Node).
-* *Note:* The MEAM potential scales reasonably well with MPI, but performance gains diminish beyond ~64 cores for small nanoparticles (<50k atoms).
-
-
-* **Memory (RAM):**
-* **Minimum:** 16 GB.
-* **Recommended:** 32 GB or higher. Large atomic dump files and trajectory analysis require significant memory overhead.
-
-
-* **Storage:**
-* **Requirement:** High-speed SSD.
-* **Capacity:** Ensure at least **50-100 GB** of free space. A full SME cycle generates thousands of frame snapshots; insufficient disk space will cause the simulation to crash mid-run.
-
-
-
-### Software Prerequisites
-
-To run these scripts, your environment must have the following installed and configured:
-
-1. **LAMMPS (Large-scale Atomic/Molecular Massively Parallel Simulator)**
-* **Version:** Stable release (2020 or later).
-* **Required Packages:** You *must* compile LAMMPS with the following packages enabled:
-* `MEAM` (Modified Embedded Atom Method)
-* `MANYBODY` (For multi-body interactions)
-* `MPI` (Message Passing Interface for parallel execution)
-* `MOLECULE` (Standard atomistic definitions)
-
-
-
-
-2. **Python Environment**
-* **Python 3.8+**
-* **Libraries:** `numpy` (math), `pandas` (data handling), `scipy` (curve fitting).
-
-
-
----
-
-## 📚 References
-
-This project relies on validated interatomic potentials and methodologies from the following literature:
-
-* **Primary Potential (Ni-Ti MEAM):**
 * Ko, W. S., Grabowski, B., & Neugebauer, J. (2015). Development of a modified embedded-atom method potential for Ni-Ti systems. *Physical Review B*, 92(13), 134107.
-
-
-* **Structure Identification:**
-* Ackland, G. J., & Jones, A. P. (2006). Applications of local crystal structure measures in atomistic simulations. *Physical Review B*, 73(5), 054104.
-
-
-* **Phase Transformation Methodology:**
-* Waitz, T., et al. (2004). Size-dependent martensitic transformation in NiTi nanoparticles. *Acta Materialia*, 52(1), 137-147.
-
+* Waitz, T., Antretter, T., Keckes, J., & Karnthaler, H. P. (2004). Size-dependent martensitic transformation in NiTi nanoparticles. *Acta Materialia*, 52(1), 137-147.

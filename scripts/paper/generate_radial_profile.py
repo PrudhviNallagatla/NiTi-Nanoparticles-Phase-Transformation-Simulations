@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 Radial Phase Profile Analysis for NiTi Nanoparticle MD Paper
 =============================================================
@@ -33,16 +33,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import AutoMinorLocator
 
-# CONFIGURATION
+               
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
 
 RAW_BASE = os.path.join(REPO_ROOT, "data", "raw_output")
 RMSD = 0.15
-N_BINS = 25  # radial bins
+N_BINS = 25               
 
-# Dumps to analyze
+                  
 DUMPS = {
     "5nm_eq": {
         "path": os.path.join(
@@ -78,7 +78,7 @@ DUMPS = {
     },
 }
 
-# STYLE
+       
 plt.rcParams.update(
     {
         "font.family": "serif",
@@ -108,7 +108,7 @@ plt.rcParams.update(
 SINGLE_COL = 3.375
 
 
-# ANALYSIS
+          
 def compute_radial_profile(dump_path, n_bins=N_BINS):
     """
     Compute f_Aus as a function of r/r_max.
@@ -129,15 +129,15 @@ def compute_radial_profile(dump_path, n_bins=N_BINS):
     structs = np.asarray(data.particles["Structure Type"])
     n_total = len(structs)
 
-    # Center of mass
+                    
     com = np.mean(pos, axis=0)
     r = np.sqrt(np.sum((pos - com) ** 2, axis=1))
     r_max = np.max(r)
 
-    # Normalize
+               
     r_norm = r / r_max
 
-    # Bin edges (equal spacing in r/r_max from 0 to 1)
+                                                      
     bin_edges = np.linspace(0, 1, n_bins + 1)
     bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
 
@@ -158,8 +158,8 @@ def generate_radial_profile_figure():
     """Generate the radial phase profile figure."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(7.0, 2.8), sharey=True)
 
-    # Left panel: equilibrium profiles
-    # Right panel: peak strain profiles
+                                      
+                                       
     panels = {
         "eq": (ax1, ["5nm_eq", "10nm_eq"], "(a) Equilibrium"),
         "peak": (ax2, ["5nm_peak", "10nm_peak"], r"(b) $\varepsilon = 10\%$"),
@@ -186,7 +186,7 @@ def generate_radial_profile_figure():
                 label=info["label"],
             )
 
-        # Core fraction boundary line
+                                     
         ax.axvline(0.8, color="0.6", ls=":", lw=0.8, zorder=0)
         ax.text(
             0.78,
@@ -248,7 +248,7 @@ def generate_radial_atom_count():
     print("  [OK] Radial atom count figure")
 
 
-# MAIN
+      
 if __name__ == "__main__":
     print("=" * 60)
     print("Radial Phase Profile Analysis")

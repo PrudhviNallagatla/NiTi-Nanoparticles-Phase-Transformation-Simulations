@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 Generate a graphical abstract using actual OVITO renderings plus flowchart overlays.
 
@@ -255,7 +255,7 @@ def build_figure(width=16, height=9):
 
     draw_flowchart_boxes(canvas_ax)
 
-    # 5 nm row
+              
     ax_5_start = fig.add_subplot(gs[0:4, 0:2])
     ax_5_mid = fig.add_subplot(gs[0:4, 2:4])
     ax_5_end = fig.add_subplot(gs[0:4, 4:6])
@@ -272,7 +272,7 @@ def build_figure(width=16, height=9):
     style_image_axis(ax_5_mid, "5 nm: peak strain")
     style_image_axis(ax_5_end, "5 nm: recovered")
 
-    # 10 nm row
+               
     ax_10_start = fig.add_subplot(gs[4:8, 0:2])
     ax_10_mid = fig.add_subplot(gs[4:8, 2:4])
     ax_10_end = fig.add_subplot(gs[4:8, 4:6])
@@ -289,7 +289,7 @@ def build_figure(width=16, height=9):
     style_image_axis(ax_10_mid, "10 nm: peak strain")
     style_image_axis(ax_10_end, "10 nm: recovered")
 
-    # Row labels
+                
     canvas_ax.text(
         0.022,
         0.58,
@@ -313,13 +313,13 @@ def build_figure(width=16, height=9):
         fontweight="bold",
     )
 
-    # Flow arrows along each row
+                                
     add_row_flow_arrow(canvas_ax, 0.245, 0.31, 0.57)
     add_row_flow_arrow(canvas_ax, 0.485, 0.55, 0.57)
     add_row_flow_arrow(canvas_ax, 0.245, 0.31, 0.305)
     add_row_flow_arrow(canvas_ax, 0.485, 0.55, 0.305)
 
-    # Highlight zone in 10nm recovered state
+                                            
     ring = Circle(
         (0.67, 0.24), 0.035, fill=False, lw=2.0, ec=PALETTE["warn"], linestyle="--"
     )

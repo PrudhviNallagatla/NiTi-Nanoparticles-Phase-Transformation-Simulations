@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 NiTi Nanoparticle Generator using ASE (Atomic Simulation Environment)
 Author: PrudhviNallagatla
@@ -63,7 +63,7 @@ class NiTiNanoparticleASE:
         shape: str = "sphere",
         aspect_ratio: float = 1.0,
         seed: int = 42,
-        n_cores: int = -1,  # NEW: -1 = use all cores
+        n_cores: int = -1,                            
     ):
         """
         Args:
@@ -75,7 +75,7 @@ class NiTiNanoparticleASE:
             seed: Random seed for reproducibility
         """
         self.diameter_nm = diameter_nm
-        self.radius = diameter_nm * 5.0  # Convert nm to Angstrom
+        self.radius = diameter_nm * 5.0                          
         self.ni_percent = ni_percent
         self.lattice_param = lattice_param
         self.shape = shape
@@ -83,13 +83,13 @@ class NiTiNanoparticleASE:
         self.seed = seed
         np.random.seed(seed)
 
-        # Shape-specific parameters
+                                   
         self._initialize_shape_parameters()
 
         self.atoms = None
-        self.grain_info = None  # Store grain boundary analysis
+        self.grain_info = None                                 
 
-        # NEW: Set number of cores
+                             
         if n_cores == -1:
             self.n_cores = mp.cpu_count()
         else:
@@ -102,71 +102,71 @@ class NiTiNanoparticleASE:
     def _initialize_shape_parameters(self):
         """Initialize shape-specific parameters for EDM realism"""
         if self.shape == "blob":
-            # Blob: irregular shape via Perlin-like noise
-            # Based on SEM images: smooth but irregular morphology
-            n_harmonics = 8  # Number of spherical harmonics
-            self.blob_coeffs = np.random.randn(n_harmonics) * 0.15  # Amplitude
+                                                         
+                                                                  
+            n_harmonics = 8                                 
+            self.blob_coeffs = np.random.randn(n_harmonics) * 0.15             
             print(f"  Shape: BLOB (EDM-realistic irregular morphology)")
 
         elif self.shape == "rough":
-            # Rough: atomic-scale surface roughness
-            self.roughness_scale = 0.05 * self.radius  # 5% of radius
+                                                   
+            self.roughness_scale = 0.05 * self.radius                
             print(f"  Shape: ROUGH (atomic-scale surface texture)")
 
         elif self.shape == "faceted":
-            # Faceted: Wulff construction with {100} and {110} planes
-            # NOT realistic for EDM, but useful for comparison
+                                                                     
+                                                              
             self.facet_planes = [
                 np.array([1, 0, 0]),
                 np.array([0, 1, 0]),
-                np.array([0, 0, 1]),  # {100}
+                np.array([0, 0, 1]),         
                 np.array([1, 1, 0]),
                 np.array([1, 0, 1]),
-                np.array([0, 1, 1]),  # {110}
+                np.array([0, 1, 1]),         
             ]
-            self.facet_tolerance = 0.92  # How sharp the facets are
+            self.facet_tolerance = 0.92                            
             print(f"  Shape: FACETED (Wulff-like, NOT EDM-realistic)")
 
         elif self.shape == "ellipsoid":
             print(f"  Shape: ELLIPSOID (aspect ratio={self.aspect_ratio})")
 
-        else:  # sphere
+        else:          
             print(f"  Shape: SPHERE (idealized baseline)")
 
     def _generate_base_structure(self):
         """Generate perfect B2 NiTi crystal using ASE"""
-        # Create B2 (CsCl-type) unit cell
-        # ASE's 'bulk' doesn't have B2 directly, so we build it manually
+                                         
+                                                                        
         a = self.lattice_param
         positions = [
-            [0.0, 0.0, 0.0],  # Ni at corner
-            [a / 2, a / 2, a / 2],  # Ti at body center
+            [0.0, 0.0, 0.0],                
+            [a / 2, a / 2, a / 2],                     
         ]
         cell = [[a, 0, 0], [0, a, 0], [0, 0, a]]
 
-        # Create unit cell
+                          
         unit_cell = Atoms(
             symbols=["Ni", "Ti"], positions=positions, cell=cell, pbc=True
         )
 
-        # Replicate to create supercell large enough for nanoparticle
+                                                                     
         n_repeats = int(np.ceil(self.radius * 2 / a)) + 2
         supercell = unit_cell * (n_repeats, n_repeats, n_repeats)
 
-        # Center the supercell
+                              
         center = supercell.get_cell().diagonal() / 2
         supercell.positions -= center
 
-        # Carve out the nanoparticle shape
+                                          
         self._carve_shape(supercell)
 
-        # Adjust composition if needed
+                                      
         self._adjust_composition()
 
-        # Recenter at origin
+                            
         self.atoms.positions -= self.atoms.get_center_of_mass()
 
-        print(f"✓ Generated {len(self.atoms)} atoms")
+        print(f"Generated {len(self.atoms)} atoms")
         self._check_composition()
 
     def _carve_shape(self, supercell):
@@ -178,7 +178,7 @@ class NiTiNanoparticleASE:
             mask = distances <= self.radius
 
         elif self.shape == "ellipsoid":
-            # Ellipsoid: (x/a)^2 + (y/b)^2 + (z/c)^2 <= 1
+                                                         
             a = self.radius * self.aspect_ratio
             b = self.radius
             c = self.radius
@@ -189,21 +189,21 @@ class NiTiNanoparticleASE:
             ) <= 1
 
         elif self.shape == "blob":
-            # Irregular blob via spherical harmonics perturbation
+                                                                 
             mask = self._blob_shape_mask(positions)
 
         elif self.shape == "rough":
-            # Sphere with atomic-scale roughness
+                                                
             mask = self._rough_shape_mask(positions)
 
         elif self.shape == "faceted":
-            # Faceted Wulff-like shape
+                                      
             mask = self._faceted_shape_mask(positions)
 
         else:
             raise ValueError(f"Unknown shape: {self.shape}")
 
-        # Keep only atoms inside shape
+                                      
         self.atoms = supercell[mask]
 
     def _blob_shape_mask(self, positions: np.ndarray) -> np.ndarray:
@@ -213,21 +213,21 @@ class NiTiNanoparticleASE:
         This mimics the smooth but irregular morphology seen in
         SEM images of EDM-synthesized NiTi nanoparticles (60-156nm range)
         """
-        # Convert to spherical coordinates
+                                          
         x, y, z = positions[:, 0], positions[:, 1], positions[:, 2]
         r = np.sqrt(x**2 + y**2 + z**2)
-        theta = np.arctan2(y, x)  # azimuthal angle
-        phi = np.arccos(np.clip(z / (r + 1e-10), -1, 1))  # polar angle
+        theta = np.arctan2(y, x)                   
+        phi = np.arccos(np.clip(z / (r + 1e-10), -1, 1))               
 
-        # Generate radius modulation using spherical harmonics
-        # Low-order harmonics → smooth, organic shapes (not crystallographic!)
+                                                              
+                                                                              
         r_modulation = np.ones_like(r)
         for l in range(len(self.blob_coeffs)):
-            # Simple spherical harmonic approximation
+                                                     
             harmonic = np.cos(l * theta) * np.sin(l * phi)
             r_modulation += self.blob_coeffs[l] * harmonic
 
-        # Effective radius with blob perturbation
+                                                 
         r_effective = self.radius * r_modulation
 
         return r <= r_effective
@@ -240,8 +240,8 @@ class NiTiNanoparticleASE:
         """
         r = np.linalg.norm(positions, axis=1)
 
-        # Add random roughness to radius threshold
-        # Correlated noise (not pure random) for realistic surface texture
+                                                  
+                                                                          
         roughness = np.random.randn(len(positions)) * self.roughness_scale
         r_threshold = self.radius + roughness
 
@@ -256,14 +256,14 @@ class NiTiNanoparticleASE:
         """
         r = np.linalg.norm(positions, axis=1)
 
-        # Start with sphere
+                           
         mask = r <= self.radius
 
-        # Apply facet constraints
+                                 
         for plane_normal in self.facet_planes:
-            # Distance from plane through origin
+                                                
             distances = np.abs(np.dot(positions, plane_normal))
-            # Cut off atoms beyond facet plane
+                                              
             mask &= distances <= (self.radius * self.facet_tolerance)
 
         return mask
@@ -287,19 +287,19 @@ class NiTiNanoparticleASE:
         if abs(current_ni_percent - target_ni_percent) < 0.5:
             return
 
-        # ✅ NEW: Preserve GB structure if requested
+                                            
         if preserve_grain_structure and hasattr(self, "grain_info"):
-            # Only swap atoms NOT at grain boundaries
-            # (This maintains clean GBs for GB-specific studies)
+                                                     
+                                                                
             positions = self.atoms.get_positions()
-            # ... (implement GB-aware swapping)
+                                               
             print(
-                "  ⚠ Preserving grain boundary structure during composition adjustment"
+                "  WARNING: Preserving grain boundary structure during composition adjustment"
             )
         else:
-            # Original logic: random swaps (realistic for as-quenched EDM)
+                                                                          
             if current_ni_percent < target_ni_percent:
-                # Need more Ni: convert Ti → Ni
+                                               
                 ti_indices = [i for i, s in enumerate(symbols) if s == "Ti"]
                 n_swaps = int((target_ni_percent - current_ni_percent) * total / 100)
                 swap_indices = np.random.choice(
@@ -308,7 +308,7 @@ class NiTiNanoparticleASE:
                 for i in swap_indices:
                     symbols[i] = "Ni"
             else:
-                # Need more Ti: convert Ni → Ti
+                                               
                 ni_indices = [i for i, s in enumerate(symbols) if s == "Ni"]
                 n_swaps = int((current_ni_percent - target_ni_percent) * total / 100)
                 swap_indices = np.random.choice(
@@ -345,7 +345,7 @@ class NiTiNanoparticleASE:
         mask[remove_indices] = False
         self.atoms = self.atoms[mask]
 
-        print(f"✓ Added {n_remove} bulk vacancies ({concentration*100:.1f}%)")
+        print(f"Added {n_remove} bulk vacancies ({concentration*100:.1f}%)")
 
     def add_antisite_defects(self, concentration: float = 0.02):
         """
@@ -358,12 +358,12 @@ class NiTiNanoparticleASE:
         n_swaps = int(concentration * len(self.atoms))
         swap_indices = np.random.choice(len(self.atoms), n_swaps, replace=False)
 
-        # Swap Ni ↔ Ti
+                      
         for i in swap_indices:
             symbols[i] = "Ti" if symbols[i] == "Ni" else "Ni"
 
         self.atoms.set_chemical_symbols(symbols.tolist())
-        print(f"✓ Added {n_swaps} antisite defects ({concentration*100:.1f}%)")
+        print(f"Added {n_swaps} antisite defects ({concentration*100:.1f}%)")
 
     def add_surface_vacancies(self, concentration: float = 0.05):
         """
@@ -375,13 +375,13 @@ class NiTiNanoparticleASE:
         positions = self.atoms.get_positions()
         distances = np.linalg.norm(positions, axis=1)
 
-        # Define "surface" as outer 5% of radius
+                                                
         surface_threshold = self.radius * 0.95
         surface_mask = distances >= surface_threshold
         surface_indices = np.where(surface_mask)[0]
 
         if len(surface_indices) == 0:
-            print(f"⚠ Warning: No surface atoms found (particle too small?)")
+            print(f"WARNING: No surface atoms found (particle too small?)")
             return
 
         n_remove = int(concentration * len(surface_indices))
@@ -392,7 +392,7 @@ class NiTiNanoparticleASE:
         self.atoms = self.atoms[mask]
 
         print(
-            f"✓ Added {n_remove} surface vacancies ({concentration*100:.1f}% of surface)"
+            f"Added {n_remove} surface vacancies ({concentration*100:.1f}% of surface)"
         )
 
     def create_polycrystalline(
@@ -415,13 +415,13 @@ class NiTiNanoparticleASE:
             target_grain_size_nm: Target grain diameter in nm (overrides n_grains)
             use_atomsk: Use Atomsk for grain generation (requires Atomsk installed)
         """
-        # Calculate n_grains from target grain size if specified
+                                                                
         if target_grain_size_nm is not None:
-            # Volume of particle: (4/3)πR³
-            # Volume per grain: (4/3)π(d/2)³
-            # n_grains ≈ R³ / (d/2)³
+                                          
+                                            
+                                    
             n_grains = int((self.diameter_nm / target_grain_size_nm) ** 3)
-            n_grains = max(n_grains, 2)  # At least 2 grains
+            n_grains = max(n_grains, 2)                     
             print(
                 f"  Target grain size: {target_grain_size_nm:.1f}nm → {n_grains} grains"
             )
@@ -433,7 +433,7 @@ class NiTiNanoparticleASE:
 
     def _create_polycrystalline_voronoi(self, n_grains: int):
         """
-        ✅ MEMORY-EFFICIENT: Uses KDTree instead of cdist for overlap detection
+        Memory-efficient: Uses KDTree instead of cdist for overlap detection
         """
         from scipy.spatial import cKDTree
 
@@ -441,7 +441,7 @@ class NiTiNanoparticleASE:
         grain_centers = self._generate_volume_based_grain_centers(n_grains)
         actual_n_grains = len(grain_centers)
 
-        # Grain assignment (parallel)
+                                     
         print(
             f"  Assigning {len(positions)} atoms to {actual_n_grains} grains (parallel)..."
         )
@@ -461,16 +461,16 @@ class NiTiNanoparticleASE:
             )
         grain_assignments = np.concatenate(results)
 
-        # Store grain rotations
+                               
         self.grain_rotations = []
 
-        # ✅ MEMORY FIX: Track atoms to delete globally
+                                        
         atoms_to_delete = set()
-        min_distance_threshold = 2.0  # Minimum safe Ni-Ti bond length (Å)
+        min_distance_threshold = 2.0                                      
 
         print(f"  Applying grain rotations (memory-efficient overlap detection)...")
 
-        # Apply random rotation to each grain
+                                             
         for grain_id in range(actual_n_grains):
             grain_mask = grain_assignments == grain_id
             grain_indices = np.where(grain_mask)[0]
@@ -486,36 +486,36 @@ class NiTiNanoparticleASE:
             grain_center = grain_atoms.mean(axis=0)
             rotated = rotation.apply(grain_atoms - grain_center) + grain_center
 
-            # ✅ MEMORY FIX: Use KDTree instead of cdist
+                                         
             other_grain_mask = ~grain_mask
             other_atoms = positions[other_grain_mask]
 
             if len(other_atoms) > 0:
-                # Build KDTree for OTHER grains (memory-efficient spatial index)
+                                                                                
                 tree = cKDTree(other_atoms)
 
-                # For each atom in THIS grain, find nearest neighbor in OTHER grains
-                # This is O(N log M) instead of O(N*M) for cdist
-                distances, _ = tree.query(rotated, k=1)  # k=1: nearest neighbor only
+                                                                                    
+                                                                
+                distances, _ = tree.query(rotated, k=1)                              
 
-                # Find atoms that are too close
+                                               
                 overlap_mask = distances < min_distance_threshold
                 overlapping_local_indices = np.where(overlap_mask)[0]
 
                 if len(overlapping_local_indices) > 0:
-                    # Mark for deletion
+                                       
                     for local_idx in overlapping_local_indices:
                         global_idx = grain_indices[local_idx]
                         atoms_to_delete.add(global_idx)
 
                     print(
-                        f"    ⚠ Grain {grain_id}: Marked {len(overlapping_local_indices)} overlapping atoms for deletion"
+                        f"    WARNING: Grain {grain_id}: Marked {len(overlapping_local_indices)} overlapping atoms for deletion"
                     )
 
-            # Apply rotation (overlaps will be removed later)
+                                                             
             positions[grain_mask] = rotated
 
-        # ✅ DELETE OVERLAPPING ATOMS
+                                  
         if atoms_to_delete:
             print(
                 f"\n  Removing {len(atoms_to_delete)} overlapping atoms from grain boundaries..."
@@ -528,14 +528,14 @@ class NiTiNanoparticleASE:
             grain_assignments = grain_assignments[keep_mask]
 
             print(
-                f"  ✓ Final atom count: {len(self.atoms)} (removed {len(atoms_to_delete)} overlaps)"
+                f"  Final atom count: {len(self.atoms)} (removed {len(atoms_to_delete)} overlaps)"
             )
         else:
-            print(f"  ✓ No overlaps detected")
+            print(f"  No overlaps detected")
 
         self.atoms.set_positions(positions)
 
-        # Continue with grain boundary analysis
+                                               
         self._analyze_grain_boundaries_voronoi_parallel(
             grain_assignments, grain_centers, actual_n_grains
         )
@@ -549,10 +549,10 @@ class NiTiNanoparticleASE:
 
         print(f"  Detecting grain boundaries (parallel)...")
 
-        # FIX: Calculate grain sizes BEFORE use
+                                          
         grain_sizes = [np.sum(grain_assignments == i) for i in range(n_grains)]
 
-        # FIX: Use optimized worker to reduce memory overhead
+                                                        
         chunk_size = max(1000, len(positions) // (self.n_cores * 4))
         chunk_indices = [
             list(range(i, min(i + chunk_size, len(positions))))
@@ -567,7 +567,7 @@ class NiTiNanoparticleASE:
         with mp.Pool(processes=self.n_cores) as pool:
             results = pool.map(_detect_gb_atoms_worker_optimized, chunks)
 
-        # Combine results
+                         
         gb_atom_indices = []
         gb_thickness_samples = []
         for indices, thicknesses in results:
@@ -576,7 +576,7 @@ class NiTiNanoparticleASE:
 
         gb_atoms = len(gb_atom_indices)
 
-        # Calculate Voronoi cell volumes for grain size estimation
+                                                                  
         try:
             vor = Voronoi(np.array(grain_centers))
             grain_volumes_voronoi = []
@@ -584,7 +584,7 @@ class NiTiNanoparticleASE:
             for region_index in vor.point_region:
                 region = vor.regions[region_index]
                 if -1 not in region and len(region) > 0:
-                    # Calculate volume of Voronoi cell
+                                                      
                     vertices = vor.vertices[region]
                     try:
                         hull = ConvexHull(vertices)
@@ -594,13 +594,13 @@ class NiTiNanoparticleASE:
                 else:
                     grain_volumes_voronoi.append(0)
 
-            # Convert Voronoi volumes to equivalent sphere diameters
+                                                                    
             grain_diameters_nm = []
             for vol in grain_volumes_voronoi:
                 if vol > 0:
-                    # V = (4/3)πr³ → r = (3V/4π)^(1/3)
+                                                      
                     radius = (3 * vol / (4 * np.pi)) ** (1 / 3)
-                    diameter_nm = 2 * radius / 10.0  # Angstrom to nm
+                    diameter_nm = 2 * radius / 10.0                  
                     grain_diameters_nm.append(diameter_nm)
 
             avg_grain_diameter_nm = (
@@ -612,18 +612,18 @@ class NiTiNanoparticleASE:
 
             voronoi_available = True
         except Exception as e:
-            print(f"    ⚠ Voronoi volume calculation failed: {e}")
+            print(f"    WARNING: Voronoi volume calculation failed: {e}")
             print(f"    Falling back to bounding sphere method")
             voronoi_available = False
             avg_grain_diameter_nm = 0
             std_grain_diameter_nm = 0
 
-        # Estimate average grain boundary thickness
+                                                   
         avg_gb_thickness_nm = 0
         if gb_thickness_samples:
             avg_gb_thickness_nm = np.mean(gb_thickness_samples) / 10.0
 
-        # Store grain info (same as before)
+                                           
         self.grain_info = {
             "n_grains": n_grains,
             "grain_sizes": grain_sizes,
@@ -637,22 +637,20 @@ class NiTiNanoparticleASE:
             "voronoi_available": voronoi_available,
         }
 
-        # Print detailed analysis
-        print(f"\n{'='*60}")
-        print(f"GRAIN BOUNDARY ANALYSIS (Voronoi Tessellation)")
-        print(f"{'='*60}")
-        print(f"✓ Created {n_grains} grains (polycrystalline structure)")
+                                 
+        print(f"\nGRAIN BOUNDARY ANALYSIS (Voronoi Tessellation)")
+        print(f"Created {n_grains} grains (polycrystalline structure)")
 
         if voronoi_available:
             print(f"\nVoronoi-Based Grain Size Analysis:")
             print(
                 f"  Average grain diameter:  {avg_grain_diameter_nm:.2f} ± {std_grain_diameter_nm:.2f} nm"
             )
-            if grain_diameters_nm:  # Check if list is not empty
+            if grain_diameters_nm:                              
                 print(f"  Min grain diameter:      {min(grain_diameters_nm):.2f} nm")
                 print(f"  Max grain diameter:      {max(grain_diameters_nm):.2f} nm")
             else:
-                print(f"  ⚠ Could not calculate grain diameter range (no valid grains)")
+                print(f"  WARNING: Could not calculate grain diameter range (no valid grains)")
         print(f"\nGrain Size Distribution (by atom count):")
         for i, size in enumerate(grain_sizes):
             print(f"  Grain {i+1}: {size:5d} atoms ({100*size/len(positions):5.1f}%)")
@@ -664,54 +662,52 @@ class NiTiNanoparticleASE:
         )
         print(f"  Avg. GB thickness:        {avg_gb_thickness_nm:.2f} nm")
 
-        # Grain size balance check
+                                  
         size_std = np.std(grain_sizes)
         size_mean = np.mean(grain_sizes)
         size_cv = size_std / size_mean
 
         if size_cv > 0.3:
-            print(f"\n⚠ WARNING: Grain size imbalance detected!")
+            print(f"\nWARNING: Grain size imbalance detected!")
             print(f"  Coefficient of variation: {size_cv:.2f} (>0.3)")
             print(f"  Recommendation: Try --grain-size option or reduce n_grains")
         else:
-            print(f"\n✓ Grain sizes well-balanced (CV={size_cv:.2f})")
+            print(f"\nGrain sizes well-balanced (CV={size_cv:.2f})")
 
         print(f"\nCITATION: Voronoi tessellation [Voronoi 1908, SciPy implementation]")
-        print(f"{'='*60}\n")
+        print(f"\n")
 
     def _create_polycrystalline_atomsk(self, n_grains: int):
         """
         Simple Atomsk polycrystal generation
         """
-        print(f"\n{'='*60}")
-        print(f"ATOMSK POLYCRYSTALLINE GENERATION")
-        print(f"{'='*60}")
+        print(f"\nATOMSK POLYCRYSTALLINE GENERATION")
 
-        # Check Atomsk
+                      
         try:
             result = subprocess.run(
                 ["atomsk", "--version"], capture_output=True, text=True, timeout=5
             )
             if result.returncode != 0:
                 raise FileNotFoundError
-            print(f"✅ Atomsk found: {result.stdout.strip().split(chr(10))[0]}")
+            print(f"Atomsk found: {result.stdout.strip().split(chr(10))[0]}")
         except:
-            print(f"❌ Atomsk not found - falling back to Voronoi")
+            print(f"Atomsk not found - falling back to Voronoi")
             self._create_polycrystalline_voronoi(n_grains)
             return
 
         with tempfile.TemporaryDirectory() as tmpdir:
             a = self.lattice_param
-            # ✅ FIX: Smaller system first, then duplicate
+                                                  
             n_repeats = int(np.ceil(self.radius * 2 / a)) + 4
 
-            # ✅ REDUCE size if too large (Atomsk can hang on huge systems)
+                                                                        
             if n_repeats > 50:
-                print(f"  ⚠ Large system detected ({n_repeats} repeats)")
+                print(f"  WARNING: Large system detected ({n_repeats} repeats)")
                 print(f"  Creating smaller intermediate structure...")
-                n_repeats = min(n_repeats, 50)  # Cap at 50x50x50
+                n_repeats = min(n_repeats, 50)                   
 
-            # Step 1: Create unit cell (CFG format - better for Atomsk)
+                                                                       
             unitcell = Path(tmpdir) / "unitcell.cfg"
             with open(unitcell, "w") as f:
                 f.write(f"Number of particles = 2\n")
@@ -732,12 +728,12 @@ class NiTiNanoparticleASE:
                 f.write(f"Ti\n")
                 f.write(f"{a/2} {a/2} {a/2}\n")
 
-            print(f"✅ Created unit cell")
+            print(f"Created unit cell")
 
-            # Step 2: Create polycrystal with Atomsk (CORRECTED COMMAND)
+                                                                        
             output = Path(tmpdir) / "polycrystal.lmp"
 
-            # ✅ CORRECT SYNTAX: polycrystal mode first, then duplicate
+                                                                    
             cmd = [
                 "atomsk",
                 "--polycrystal",
@@ -754,13 +750,13 @@ class NiTiNanoparticleASE:
             print(f"  {' '.join(cmd)}")
             print(f"  (This may take 1-2 minutes for large systems...)\n")
 
-            # ✅ FIX: Add timeout and show progress
+                                           
             try:
                 result = subprocess.run(
                     cmd,
                     capture_output=True,
                     text=True,
-                    timeout=300,  # 5 minute timeout
+                    timeout=300,                    
                     cwd=tmpdir,
                 )
 
@@ -772,24 +768,24 @@ class NiTiNanoparticleASE:
                 print("--- End Output ---\n")
 
             except subprocess.TimeoutExpired:
-                print(f"\n❌ Atomsk timeout (>5 min) - system too large!")
+                print(f"\nERROR: Atomsk timeout (>5 min) - system too large!")
                 print(f"   Falling back to Voronoi method")
                 self._create_polycrystalline_voronoi(n_grains)
                 return
 
-            # Step 3: Check output
+                                  
             if not output.exists():
-                print(f"❌ Atomsk failed to create output file")
+                print(f"ERROR: Atomsk failed to create output file")
                 print(f"   Falling back to Voronoi method")
                 self._create_polycrystalline_voronoi(n_grains)
                 return
 
-            # Step 4: Load and process
-            print(f"✅ Loading polycrystal...")
+                                      
+            print(f"Loading polycrystal...")
             poly = read(str(output), format="lammps-data")
             poly.positions -= poly.get_center_of_mass()
 
-            print(f"✅ Loaded {len(poly)} atoms")
+            print(f"Loaded {len(poly)} atoms")
             print(f"  Carving to {self.shape} shape...")
 
             self.atoms = poly
@@ -797,7 +793,7 @@ class NiTiNanoparticleASE:
             self._adjust_composition()
             self.atoms.positions -= self.atoms.get_center_of_mass()
 
-            # Store metadata
+                            
             self.grain_info = {
                 "n_grains": n_grains,
                 "method": "atomsk",
@@ -807,23 +803,23 @@ class NiTiNanoparticleASE:
                 ),
             }
 
-            print(f"\n✅ Polycrystal complete: {len(self.atoms)} atoms")
-            print(f"{'='*60}\n")
+            print(f"\nPolycrystal complete: {len(self.atoms)} atoms")
+            print()
 
     def write_lammps_data(self, filename: str):
         """Write LAMMPS data file with metadata"""
         from datetime import datetime
 
-        # Set atom types and masses
+                                   
         symbols = self.atoms.get_chemical_symbols()
         atom_types = [1 if s == "Ni" else 2 for s in symbols]
         masses = {"Ni": 58.6934, "Ti": 47.867}
         self.atoms.set_masses([masses[s] for s in symbols])
 
-        # Set non-periodic boundary
+                                   
         self.atoms.set_pbc([False, False, False])
 
-        # Set simulation box
+                            
         positions = self.atoms.get_positions()
         min_pos = positions.min(axis=0)
         max_pos = positions.max(axis=0)
@@ -834,7 +830,7 @@ class NiTiNanoparticleASE:
         self.atoms.positions -= box_lo
         self.atoms.set_cell(box_size)
 
-        # ✅ FIX: Write to temp file first
+                                  
         import tempfile
 
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".data") as tmp:
@@ -848,7 +844,7 @@ class NiTiNanoparticleASE:
             specorder=["Ni", "Ti"],
         )
 
-        # ✅ FIX: Read and prepend proper header
+                                        
         with open(tmp_filename, "r") as f:
             content = f.read()
 
@@ -871,25 +867,25 @@ class NiTiNanoparticleASE:
         else:
             metadata += f"# Structure: Single crystal\n"
 
-        # ✅ FIX: Replace ASE's first line with proper comment
+                                                      
         lines = content.split("\n")
-        lines[0] = metadata.rstrip()  # Replace "(written by ASE)" line
+        lines[0] = metadata.rstrip()                                   
 
         with open(filename, "w") as f:
             f.write("\n".join(lines))
 
-        # Clean up temp file
+                            
         import os
 
         os.remove(tmp_filename)
 
-        print(f"✅ Wrote LAMMPS data: {filename}")
+        print(f"Wrote LAMMPS data: {filename}")
         print(f"  Box: {box_size[0]:.1f} x {box_size[1]:.1f} x {box_size[2]:.1f} Å")
 
     def write_xyz(self, filename: str):
         """Write XYZ file for visualization"""
         write(filename, self.atoms, format="xyz")
-        print(f"✓ Wrote XYZ file: {filename}")
+        print(f"Wrote XYZ file: {filename}")
 
     def analyze_grain_misorientations(self):
         """
@@ -903,40 +899,40 @@ class NiTiNanoparticleASE:
         """
         if self.grain_info is None:
             print(
-                "⚠ No grain information available. Run create_polycrystalline() first."
+                "WARNING: No grain information available. Run create_polycrystalline() first."
             )
             return None
 
         n_grains = self.grain_info["n_grains"]
 
-        # Extract grain rotations (stored during polycrystalline generation)
+                                                                            
         if not hasattr(self, "grain_rotations"):
-            print("⚠ Grain rotations not stored. Misorientation analysis unavailable.")
+            print("WARNING: Grain rotations not stored. Misorientation analysis unavailable.")
             return None
 
         misorientations = []
         grain_pairs = []
 
-        # Calculate misorientation for each grain pair
+                                                      
         for i in range(n_grains):
             for j in range(i + 1, n_grains):
-                # Relative rotation: R_rel = R_i^T * R_j
+                                                        
                 R_rel = (
                     self.grain_rotations[i].as_matrix().T
                     @ self.grain_rotations[j].as_matrix()
                 )
 
-                # Extract rotation angle using Rodrigues formula
-                # θ = arccos((trace(R) - 1) / 2)
+                                                                
+                                                
                 trace = np.trace(R_rel)
-                # Clamp to avoid numerical errors in arccos
+                                                           
                 angle_rad = np.arccos(np.clip((trace - 1) / 2, -1.0, 1.0))
                 angle_deg = np.degrees(angle_rad)
 
                 misorientations.append(angle_deg)
                 grain_pairs.append((i, j))
 
-        # Statistics
+                    
         results = {
             "mean": np.mean(misorientations),
             "std": np.std(misorientations),
@@ -948,16 +944,14 @@ class NiTiNanoparticleASE:
             "n_grain_boundaries": len(misorientations),
         }
 
-        print(f"\n{'='*60}")
-        print(f"GRAIN MISORIENTATION ANALYSIS")
-        print(f"{'='*60}")
+        print(f"\nGRAIN MISORIENTATION ANALYSIS")
         print(f"Number of grain boundaries: {results['n_grain_boundaries']}")
         print(f"Misorientation angles:")
         print(f"  Mean:   {results['mean']:.1f}°")
         print(f"  Median: {results['median']:.1f}°")
         print(f"  Std:    {results['std']:.1f}°")
         print(f"  Range:  {results['min']:.1f}° - {results['max']:.1f}°")
-        print(f"{'='*60}\n")
+        print()
 
         return results
 
@@ -968,7 +962,7 @@ class NiTiNanoparticleASE:
         ✅ FIX: Safe division
         """
         if self.atoms is None:
-            print("⚠ No atoms to analyze")
+            print("WARNING: No atoms to analyze")
             return None
 
         positions = self.atoms.get_positions()
@@ -978,12 +972,12 @@ class NiTiNanoparticleASE:
             surface_area_ang2 = hull.area
             surface_area_nm2 = surface_area_ang2 / 100.0
 
-            # Estimate surface atoms
+                                    
             surface_threshold = self.radius * 0.95
             distances = np.linalg.norm(positions, axis=1)
             n_surface_atoms = np.sum(distances >= surface_threshold)
 
-            # ✅ FIX: Safe division
+                               
             total_atoms = len(self.atoms)
             surface_fraction = n_surface_atoms / total_atoms if total_atoms > 0 else 0.0
 
@@ -994,20 +988,18 @@ class NiTiNanoparticleASE:
                 "surface_fraction": surface_fraction,
             }
 
-            print(f"\n{'='*60}")
-            print(f"SURFACE GEOMETRY ANALYSIS")
-            print(f"{'='*60}")
+            print(f"\nSURFACE GEOMETRY ANALYSIS")
             print(f"Surface area (convex hull): {surface_area_nm2:.2f} nm²")
             print(
                 f"Surface atoms:              {n_surface_atoms} ({100*surface_fraction:.1f}%)"
             )
             print(f"Note: Geometric estimate only (not thermodynamic)")
-            print(f"{'='*60}\n")
+            print()
 
             return results
 
         except Exception as e:
-            print(f"⚠ Surface area calculation failed: {e}")
+            print(f"WARNING: Surface area calculation failed: {e}")
             return None
 
     def _generate_volume_based_grain_centers(self, n_grains: int) -> np.ndarray:
@@ -1017,13 +1009,13 @@ class NiTiNanoparticleASE:
         """
         positions = self.atoms.get_positions()
 
-        # Initial random centers within particle bounds
+                                                       
         min_pos = positions.min(axis=0)
         max_pos = positions.max(axis=0)
 
         grain_centers = np.random.uniform(min_pos, max_pos, size=(n_grains, 3))
 
-        # Filter centers outside particle shape
+                                               
         valid_centers = []
         attempts = 0
         max_attempts = n_grains * 100
@@ -1031,7 +1023,7 @@ class NiTiNanoparticleASE:
         while len(valid_centers) < n_grains and attempts < max_attempts:
             test_center = np.random.uniform(min_pos, max_pos, size=3)
 
-            # Check if center is inside particle
+                                                
             if self.shape == "sphere":
                 if np.linalg.norm(test_center) <= self.radius:
                     valid_centers.append(test_center)
@@ -1039,23 +1031,23 @@ class NiTiNanoparticleASE:
                 if self._blob_shape_mask(test_center.reshape(1, 3))[0]:
                     valid_centers.append(test_center)
             else:
-                # For other shapes, accept if reasonably centered
+                                                                 
                 if np.linalg.norm(test_center) <= self.radius * 0.8:
                     valid_centers.append(test_center)
 
             attempts += 1
 
-        # If we didn't get enough valid centers, fall back to simple method
+                                                                           
         if len(valid_centers) < n_grains:
             print(
-                f"  ⚠ Only found {len(valid_centers)} valid grain centers (target: {n_grains})"
+                f"  WARNING: Only found {len(valid_centers)} valid grain centers (target: {n_grains})"
             )
             return np.array(valid_centers) if valid_centers else grain_centers[:1]
 
         return np.array(valid_centers[:n_grains])
 
 
-# WORKER FUNCTIONS (must be at module level for pickling)
+                                                         
 def _assign_grains_worker(positions_chunk, grain_centers):
     """Worker function for parallel grain assignment"""
     grain_assignments = np.zeros(len(positions_chunk), dtype=int)
@@ -1082,7 +1074,7 @@ def _detect_gb_atoms_worker(args):
 
         if np.any(neighbor_grains != my_grain):
             gb_indices.append(offset + i)
-            # FIX: Actually calculate thickness
+                                 
             neighbor_distances = distances[neighbors & (all_grains != my_grain)]
             if len(neighbor_distances) > 0:
                 gb_thicknesses.append(np.min(neighbor_distances))
@@ -1090,17 +1082,16 @@ def _detect_gb_atoms_worker(args):
     return gb_indices, gb_thicknesses
 
 
-# Better approach: Use shared memory or pass indices
 def _detect_gb_atoms_worker_optimized(args):
     """
     Worker with reduced memory footprint
 
-    ✅ FIX: Actually calculate GB thickness
+    # Calculate GB thickness
     """
     chunk_indices, positions, grain_assignments, cutoff = args
 
     gb_indices = []
-    gb_thicknesses = []  # ✅ FIX: Actually populate this
+    gb_thicknesses = []                            
 
     for idx in chunk_indices:
         pos = positions[idx]
@@ -1112,16 +1103,16 @@ def _detect_gb_atoms_worker_optimized(args):
         if np.any(neighbor_grains != my_grain):
             gb_indices.append(idx)
 
-            # ✅ FIX: Calculate thickness as distance to nearest different-grain atom
+                                                                             
             neighbor_distances = distances[neighbors & (neighbor_grains != my_grain)]
             if len(neighbor_distances) > 0:
                 gb_thicknesses.append(np.min(neighbor_distances))
 
-    return gb_indices, gb_thicknesses  # ✅ FIX: Return both
+    return gb_indices, gb_thicknesses                                       
 
 
 def main():
-    # LINUX: Set multiprocessing start method safely
+                                                    
     if mp.get_start_method(allow_none=True) is None:
         mp.set_start_method("fork")
 
@@ -1201,7 +1192,7 @@ MORE EXAMPLES:
         """,
     )
 
-    # Required
+              
     parser.add_argument(
         "--diameter", type=float, required=True, help="Particle diameter in nanometers"
     )
@@ -1209,7 +1200,7 @@ MORE EXAMPLES:
         "-o", "--output", required=True, help="Output LAMMPS data filename"
     )
 
-    # Composition & Structure
+                             
     parser.add_argument(
         "--ni-percent",
         type=float,
@@ -1223,7 +1214,7 @@ MORE EXAMPLES:
         help="B2 lattice parameter in Å (default: 3.015)",
     )
 
-    # Shape (EDM-focused)
+                         
     parser.add_argument(
         "--shape",
         choices=["sphere", "ellipsoid", "faceted", "rough", "blob"],
@@ -1237,7 +1228,7 @@ MORE EXAMPLES:
         help="Aspect ratio for ellipsoid (default: 1.0)",
     )
 
-    # Defects
+             
     parser.add_argument(
         "--vacancies",
         type=float,
@@ -1254,7 +1245,7 @@ MORE EXAMPLES:
         help="Surface vacancy concentration",
     )
 
-    # Polycrystalline options (NEW: improved controls)
+                                                      
     grain_group = parser.add_mutually_exclusive_group()
     grain_group.add_argument(
         "--polycrystalline",
@@ -1275,7 +1266,7 @@ MORE EXAMPLES:
         help="Use Atomsk for polycrystal generation (requires Atomsk installed)",
     )
 
-    # Output
+            
     parser.add_argument(
         "--xyz", action="store_true", help="Also write XYZ file for visualization"
     )
@@ -1283,7 +1274,7 @@ MORE EXAMPLES:
         "--seed", type=int, default=42, help="Random seed (default: 42)"
     )
 
-    # NEW: Add multiprocessing argument
+                                  
     parser.add_argument(
         "--cores",
         type=int,
@@ -1291,7 +1282,7 @@ MORE EXAMPLES:
         help="Number of CPU cores to use (-1 = all available, default: -1)",
     )
 
-    # NEW: Preserve grain boundary structure flag
+                                            
     parser.add_argument(
         "--preserve-gb-structure",
         action="store_true",
@@ -1300,7 +1291,7 @@ MORE EXAMPLES:
 
     args = parser.parse_args()
 
-    # Validation
+                
     if args.diameter <= 0:
         print("ERROR: Diameter must be positive")
         return
@@ -1313,10 +1304,8 @@ MORE EXAMPLES:
         print("ERROR: Vacancy concentration must be between 0 and 0.5")
         return
 
-    # Generate nanoparticle
-    print(f"\n{'='*60}")
-    print(f"EDM-REALISTIC NiTi NANOPARTICLE GENERATOR (ASE)")
-    print(f"{'='*60}")
+                           
+    print(f"\nEDM-REALISTIC NiTi NANOPARTICLE GENERATOR (ASE)")
     print(f"Generating {args.diameter}nm NiTi nanoparticle")
 
     np_gen = NiTiNanoparticleASE(
@@ -1329,7 +1318,7 @@ MORE EXAMPLES:
         n_cores=args.cores,
     )
 
-    # Apply polycrystalline structure
+                                     
     if args.polycrystalline > 0 or args.grain_size is not None:
         np_gen.create_polycrystalline(
             n_grains=args.polycrystalline if args.polycrystalline > 0 else 0,
@@ -1337,7 +1326,7 @@ MORE EXAMPLES:
             use_atomsk=args.use_atomsk,
         )
 
-    # Add defects
+                 
     if args.vacancies > 0:
         np_gen.add_vacancies(args.vacancies)
     if args.antisites > 0:
@@ -1345,38 +1334,36 @@ MORE EXAMPLES:
     if args.surface_vacancies > 0:
         np_gen.add_surface_vacancies(args.surface_vacancies)
 
-    # Write outputs
+                   
     print()
     np_gen.write_lammps_data(args.output)
     if args.xyz:
         xyz_file = args.output.replace(".data", ".xyz")
         np_gen.write_xyz(xyz_file)
 
-    print(f"\n{'='*60}")
-    print("✓ GENERATION COMPLETE!")
-    print(f"{'='*60}")
+    print(f"\nGENERATION COMPLETE!")
 
-    # Print next steps
+                      
     print("\nNEXT STEPS:")
     print("1. Visualize: OVITO or VMD")
     print("2. Minimize in LAMMPS: minimize 1.0e-4 1.0e-6 1000 10000")
     if args.polycrystalline > 0 or args.grain_size is not None:
         print("3. Equilibrate: fix 1 all nvt temp 300.0 300.0 0.1; run 10000")
         print("4. Analyze grain boundaries in OVITO/LAMMPS")
-    print(f"{'='*60}\n")
+    print()
 
-    # ✅ FIX: Only validate if Atomsk was REQUESTED
+                                           
     if args.use_atomsk:
         if np_gen.grain_info is None or np_gen.grain_info.get("method") != "atomsk":
-            print("\n❌ CRITICAL ERROR: --use-atomsk flag set but Atomsk failed!")
+            print("\nERROR: --use-atomsk flag set but Atomsk failed!")
             print("   Check that Atomsk is installed correctly.")
             return 1
         else:
-            print(f"\n✅ VALIDATION: Atomsk method confirmed")
+            print(f"\nVALIDATION: Atomsk method confirmed")
             print(f"   Version: {np_gen.grain_info.get('atomsk_version', 'unknown')}")
     elif args.polycrystalline > 0 or args.grain_size is not None:
-        # Voronoi was used - also valid!
-        print(f"\n✅ VALIDATION: Voronoi polycrystal method used")
+                                        
+        print(f"\nVALIDATION: Voronoi polycrystal method used")
         print(f"   Grains: {np_gen.grain_info.get('n_grains', 'unknown')}")
 
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+                      
 """
 Publication-Quality Figure Generator for NiTi Nanoparticle MD Paper
 ===================================================================
@@ -26,7 +26,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator, AutoMinorLocator
 
-# PATH CONFIGURATION
+                    
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 DATA = {
@@ -77,17 +77,17 @@ DATA = {
 OUTDIR = os.path.join(REPO_ROOT, "paper", "figures")
 os.makedirs(OUTDIR, exist_ok=True)
 
-# STYLE CONFIGURATION - publication quality
-# Colors
-C5 = "#0072B2"  # blue  (5 nm)
-C10 = "#D55E00"  # vermillion (10 nm)
+                                           
+        
+C5 = "#0072B2"                
+C10 = "#D55E00"                      
 C5_LIGHT = "#56B4E9"
 C10_LIGHT = "#E69F00"
-C_CORE = "#009E73"  # green
-C_SURF = "#CC79A7"  # pink
-C_TOTAL = "#444444"  # dark gray
+C_CORE = "#009E73"         
+C_SURF = "#CC79A7"        
+C_TOTAL = "#444444"             
 
-# Matplotlib rc
+               
 plt.rcParams.update(
     {
         "font.family": "serif",
@@ -121,11 +121,11 @@ plt.rcParams.update(
     }
 )
 
-SINGLE_COL = 3.375  # inches (APS/Elsevier single column)
-DOUBLE_COL = 7.0  # inches (double column)
+SINGLE_COL = 3.375                                       
+DOUBLE_COL = 7.0                          
 
 
-# DATA LOADING
+              
 def load_thermal(path):
     """Load thermal cycle extracted data.
     Columns: Temp f_Aus f_Aus_Core f_Aus_Surf PE_Core Shear Stress Clusters Rg Step
@@ -178,17 +178,17 @@ def smooth(y, sigma=3):
 def split_cool_heat(data):
     """Split thermal cycle into cooling (500->200 K) and heating (200->500 K) branches."""
     step = data["step"]
-    # Protocol: hold 500K -> cool to 200K -> hold 200K -> heat to 500K
-    # From thermal_cycle.lmp: RUN_HOLD=50000, RUN_RAMP = (500-200)/0.35/0.002 = 428571
-    # END_STAGE0 = 50000, END_STAGE1 = 478571, END_STAGE2 = 528571, END_STAGE3 = 957142
+                                                                      
+                                                                                      
+                                                                                       
     END_STAGE0 = 50000
     END_STAGE1 = 478571
     END_STAGE2 = 528571
     END_STAGE3 = 957142
 
-    # Cooling: stage 0 (hold at 500K) + stage 1 (cool 500->200K)
+                                                                
     cool_mask = step <= END_STAGE1
-    # Heating: stage 2 (hold at 200K) + stage 3 (heat 200->500K)
+                                                                
     heat_mask = step >= END_STAGE2
 
     cool = {k: v[cool_mask] for k, v in data.items()}
@@ -208,7 +208,7 @@ def split_load_unload(data):
     return load, unload
 
 
-# FIGURE 2: f_Aus(T) — Thermal Hysteresis
+                                         
 def fig2_thermal_hysteresis():
     """f_Aus vs Temperature for both NP sizes."""
     fig, (ax1, ax2) = plt.subplots(
@@ -222,7 +222,7 @@ def fig2_thermal_hysteresis():
         d = load_thermal(DATA[size]["thermal"])
         cool, heat = split_cool_heat(d)
 
-        # Raw data as faint scatter
+                                   
         ax.scatter(
             cool["T"],
             cool["f_aus"],
@@ -242,7 +242,7 @@ def fig2_thermal_hysteresis():
             zorder=1,
         )
 
-        # Smoothed trend lines
+                              
         ax.plot(
             cool["T"],
             smooth(cool["f_aus"], sigma=5),
@@ -279,7 +279,7 @@ def fig2_thermal_hysteresis():
     print("  [OK] Fig 2: Thermal hysteresis")
 
 
-# FIGURE 3: PE_core(T) and Rg(T)
+                                
 def fig3_pe_rg_thermal():
     """Dual-panel: PE_core and Rg vs Temperature."""
     fig, axes = plt.subplots(2, 2, figsize=(DOUBLE_COL, 4.5), sharex="col")
@@ -290,7 +290,7 @@ def fig3_pe_rg_thermal():
         d = load_thermal(DATA[size]["thermal"])
         cool, heat = split_cool_heat(d)
 
-        # --- PE_core ---
+                         
         ax = axes[0, j]
         ax.scatter(
             cool["T"], cool["pe_core"], s=1, alpha=0.12, color=c_light, rasterized=True
@@ -313,7 +313,7 @@ def fig3_pe_rg_thermal():
             loc="upper left", frameon=True, framealpha=0.9, edgecolor="0.8", fontsize=8
         )
 
-        # --- Rg ---
+                    
         ax = axes[1, j]
         ax.scatter(
             cool["T"], cool["rg"], s=1, alpha=0.12, color=c_light, rasterized=True
@@ -341,7 +341,7 @@ def fig3_pe_rg_thermal():
     print("  [OK] Fig 3: PE and Rg thermal")
 
 
-# FIGURE 4: Stress-Strain (Superelasticity)
+                                           
 def fig4_stress_strain():
     """Compressive stress-strain curves for both NP sizes."""
     fig, ax = plt.subplots(figsize=(SINGLE_COL, 2.8))
@@ -350,8 +350,8 @@ def fig4_stress_strain():
         d = load_se(DATA[size]["se"])
         load, unload = split_load_unload(d)
 
-        # Smooth the noisy virial stress
-        strain_load = load["strain"] * 100  # percent
+                                        
+        strain_load = load["strain"] * 100           
         stress_load = smooth(load["stress"], sigma=4)
         strain_unload = unload["strain"] * 100
         stress_unload = smooth(unload["stress"], sigma=4)
@@ -391,7 +391,7 @@ def fig4_stress_strain():
     print("  [OK] Fig 4: Stress-strain")
 
 
-# FIGURE 5: f_Aus decomposition during SE
+                                         
 def fig5_phase_fraction_se():
     """f_Aus (total, core, surface) vs strain for both sizes."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(DOUBLE_COL, 2.8), sharey=True)
@@ -405,7 +405,7 @@ def fig5_phase_fraction_se():
         f_core = np.concatenate([load["f_aus_core"], unload["f_aus_core"]])
         f_surf = np.concatenate([load["f_aus_surf"], unload["f_aus_surf"]])
 
-        # Sort by step to get continuous path
+                                             
         steps = np.concatenate([load["step"], unload["step"]])
         order = np.argsort(steps)
         strain_all = strain_all[order]
@@ -413,7 +413,7 @@ def fig5_phase_fraction_se():
         f_core = f_core[order]
         f_surf = f_surf[order]
 
-        # Plot with smoothing
+                             
         ax.plot(
             strain_all, smooth(f_total, 4), color=C_TOTAL, ls="-", lw=1.5, label="Total"
         )
@@ -424,7 +424,7 @@ def fig5_phase_fraction_se():
             strain_all, smooth(f_surf, 4), color=C_SURF, ls="-", lw=1.3, label="Surface"
         )
 
-        # Add arrows to show load/unload direction
+                                                  
         n = len(strain_all)
         mid_load = n // 5
         mid_unload = 3 * n // 4
@@ -457,7 +457,7 @@ def fig5_phase_fraction_se():
     print("  [OK] Fig 5: Phase fraction SE")
 
 
-# FIGURE S1: Cluster count evolution during SE
+                                              
 def figS1_clusters_se():
     """Number of non-B2 clusters vs strain."""
     fig, ax = plt.subplots(figsize=(SINGLE_COL, 2.8))
@@ -491,7 +491,7 @@ def figS1_clusters_se():
     print("  [OK] Fig S1: Cluster count SE")
 
 
-# FIGURE S2: Core vs Surface in thermal cycle
+                                             
 def figS2_core_surf_thermal():
     """f_Aus_core and f_Aus_surf vs T for both sizes."""
     fig, (ax1, ax2) = plt.subplots(
@@ -536,7 +536,7 @@ def figS2_core_surf_thermal():
     print("  [OK] Fig S2: Core vs Surface thermal")
 
 
-# FIGURE 6 (bonus): Size-comparison summary panel
+                                                 
 def fig6_size_comparison():
     """4-panel: stress-strain overlay, f_aus overlay, PE_core(strain), Rg(strain)."""
     fig, axes = plt.subplots(2, 2, figsize=(DOUBLE_COL, 4.5))
@@ -549,7 +549,7 @@ def fig6_size_comparison():
         order = np.argsort(steps)
         strain_sorted = strain_all[order]
 
-        # (a) stress-strain
+                           
         ax = axes[0, 0]
         ax.plot(
             load["strain"] * 100,
@@ -562,7 +562,7 @@ def fig6_size_comparison():
             unload["strain"] * 100, smooth(unload["stress"], 4), color=color, ls="--"
         )
 
-        # (b) f_aus(strain)
+                           
         ax = axes[0, 1]
         f_tot = np.concatenate([load["f_aus"], unload["f_aus"]])
         ax.plot(
@@ -572,14 +572,14 @@ def fig6_size_comparison():
             label=DATA[size]["label"],
         )
 
-        # (c) PE_core(strain)
+                             
         ax = axes[1, 0]
         pe = np.concatenate([load["pe_core"], unload["pe_core"]])
         ax.plot(
             strain_sorted, smooth(pe[order], 4), color=color, label=DATA[size]["label"]
         )
 
-        # (d) Rg(strain)
+                        
         ax = axes[1, 1]
         rg = np.concatenate([load["rg"], unload["rg"]])
         ax.plot(
@@ -613,14 +613,14 @@ def fig6_size_comparison():
     print("  [OK] Fig 6: Size comparison")
 
 
-# MAIN
+      
 if __name__ == "__main__":
     print("=" * 60)
     print("Generating publication figures...")
     print(f"Output directory: {OUTDIR}")
     print("=" * 60)
 
-    # Verify data exists
+                        
     for size, info in DATA.items():
         for key in ["thermal", "se"]:
             if not os.path.exists(info[key]):
