@@ -7,25 +7,29 @@
 
 ## Overview
 
-This repository provides a comprehensive computational framework for simulating the thermomechanical behaviors of Nickel-Titanium (NiTi) nanoparticles using Large-scale Atomic/Molecular Massively Parallel Simulator (LAMMPS). The developed input scripts and integrated Python analysis tools enable the precise modeling of complex phase transformations at the nanoscale. By leveraging this workspace, researchers can systematically investigate both the Shape Memory Effect (SME) and Superelasticity (SE) phenomena, facilitating a deeper understanding of martensitic transformations in advanced shape memory alloys.
+This repository contains LAMMPS input scripts and Python analysis tools to simulate the thermomechanical behavior of Nickel-Titanium (NiTi) nanoparticles. These models allow researchers to track solid-state phase transformations at the nanoscale, with a specific focus on the Shape Memory Effect (SME) and Superelasticity (SE).
 
 ## Theoretical Background
 
-Nickel-Titanium alloys exhibit remarkable thermomechanical properties driven by solid-state phase transformations between the high-temperature Austenite phase and the low-temperature Martensite phase. The Shape Memory Effect manifests when the nanoparticle undergoes mechanical deformation while in the Martensite phase. Upon subsequent heating, the material transitions back to the Austenite phase, entirely recovering its original, undeformed geometry. This temperature-induced structural recovery forms the basis of numerous engineering and biomedical applications.
+NiTi alloys owe their unique thermomechanical properties to a solid-state phase change between a high-temperature Austenite phase and a low-temperature Martensite phase. 
 
-In contrast, Superelasticity occurs when mechanical stress is applied to the nanoparticle while it is in the high-temperature Austenite phase. The applied stress induces a transition to the Martensite phase, allowing the material to accommodate massive deformations. Upon the removal of the mechanical load, the material spontaneously reverts to the Austenite phase and recovers its original shape without requiring thermal activation. This reversible, stress-induced transformation yields a characteristic flag-shaped hysteresis loop during the loading and unloading cycles.
+The Shape Memory Effect occurs when the nanoparticle is mechanically deformed in its Martensite phase. Upon subsequent heating, the material transitions back to Austenite and recovers its original, undeformed shape. 
+
+Superelasticity occurs when mechanical stress is applied while the material is already in the Austenite phase. The applied stress forces a transition into Martensite, allowing the particle to accommodate massive deformation. Upon removal of the load, the material immediately reverts to Austenite and recovers its original shape without thermal activation. In these simulations, this reversible transformation yields a characteristic flag-shaped hysteresis loop.
 
 ## Computational Methodology
 
-The simulation workflow requires a strict sequential execution to ensure thermodynamic stability and accurate phase representations. Initially, a thermal baseline must be established to equilibrate the nanoparticle and facilitate the baseline phase transformation. Following this thermal cycling, the phase fractions must be rigorously validated. It is critical to confirm that the nanoparticle consists entirely of the Martensite phase at the target low temperature and the Austenite phase at the target high temperature. Only after verifying these thermal baselines can the subsequent mechanical tests for the Shape Memory Effect and Superelasticity be executed accurately.
+The simulation workflow requires sequential execution. Before conducting mechanical deformation tests, a thermal baseline must be established. This initial thermal cycling step equilibrates the nanoparticle and triggers the baseline phase transformation.
+
+Following the thermal cycling, use the provided Python scripts to validate the phase fractions. The nanoparticle must be 100% Martensite at the target low temperature and 100% Austenite at the target high temperature. Once these thermal baselines are confirmed, the mechanical tests for SME and SE can proceed.
 
 ## Installation & Dependencies
 
-To ensure a fully reproducible computational environment and avoid local dependency conflicts, it is highly recommended to run this repository either as a standalone Docker container or as a Devcontainer within Visual Studio Code. 
+To ensure a reproducible environment and avoid local dependency conflicts, we recommend running this repository either as a Docker container or as a VS Code Devcontainer. 
 
-A comprehensive bash script (`all_dependencies.sh`) is provided for environment configuration. When building the container, this script automatically handles the installation of all required dependencies, including system packages, Python libraries (such as NumPy, SciPy, Matplotlib, pandas, ase, and ovito), and the specific version of LAMMPS (`stable_2Aug2023_update3`) configured with necessary packages (MEAM, MANYBODY, PTM, VORONOI, and MPI).
+The included setup script (`all_dependencies.sh`) handles the installation of all required components: system packages, Python libraries (NumPy, SciPy, Matplotlib, pandas, ase, ovito), and LAMMPS `stable_2Aug2023_update3` configured with the necessary packages (MEAM, MANYBODY, PTM, VORONOI, and MPI).
 
-If setting up the environment manually within a container, run:
+To set up the environment manually within a container, run:
 
 ```bash
 chmod +x all_dependencies.sh
@@ -34,7 +38,7 @@ chmod +x all_dependencies.sh
 
 ## Execution Protocol
 
-The simulations must be executed sequentially, establishing the thermal baseline before proceeding to the mechanical deformation tests.
+Execute the simulations in the following sequence:
 
 1. **Establish the Thermal Baseline:**
    ```bash
@@ -42,10 +46,10 @@ The simulations must be executed sequentially, establishing the thermal baseline
    ```
 
 2. **Validate Phase Fractions:**
-   Utilize the Python analysis scripts located in the `scripts/analysers/` directory. Ensure the nanoparticle exhibits a 100% Martensite composition at the low-temperature limit and a 100% Austenite composition at the high-temperature limit.
+   Use the Python scripts in `scripts/analysers/` to check the composition. The nanoparticle should be 100% Martensite at the low-temperature limit and 100% Austenite at the high-temperature limit.
 
 3. **Execute Mechanical Tests:**
-   Once the thermal baseline is validated, the mechanical tests can be run concurrently.
+   Once the thermal baseline is validated, you can run the mechanical tests concurrently.
    
    For the Shape Memory Effect:
    ```bash
@@ -59,17 +63,17 @@ The simulations must be executed sequentially, establishing the thermal baseline
 
 ## Repository Architecture
 
-The workspace is organized to separate simulation inputs, analytical tools, and documentation:
+Here is how the repository is organized:
 
-* `src/lmps/`: LAMMPS input scripts encompassing energy minimization, thermal cycling, Shape Memory Effect, and Superelasticity simulations.
-* `scripts/`: Python post-processing utilities designed for hysteresis loop analysis, phase fraction calculation, and publication-quality figure generation.
-* `potentials/`: Interatomic potential files, specifically the modified embedded-atom method (MEAM) potential for Ni-Ti systems.
-* `data/`: Initial crystallographic structures and resulting simulation output trajectories.
-* `paper/` and `docs/`: LaTeX manuscript source files and supplementary documentation.
+* `src/lmps/`: LAMMPS input scripts for energy minimization, thermal cycling, SME, and SE simulations.
+* `scripts/`: Python post-processing tools for hysteresis loop analysis, phase fraction calculations, and figure generation.
+* `potentials/`: Interatomic potential files (MEAM potential for Ni-Ti systems).
+* `data/`: Initial crystallographic structures and simulation output trajectories.
+* `paper/` and `docs/`: LaTeX manuscript files and supplementary documentation.
 
 ## Data Availability
 
-Upon publication, the full simulation dataset and trajectories from this repository will be archived and openly accessible on the [NOMAD (Novel Materials Discovery)](https://nomad-lab.eu/) repository, at which point a permanent DOI will be minted and added to this document.
+Once the associated paper is published, we will upload the full simulation dataset and trajectories to the [NOMAD](https://nomad-lab.eu/) repository and add a permanent DOI to this README.
 
 ## License
 
