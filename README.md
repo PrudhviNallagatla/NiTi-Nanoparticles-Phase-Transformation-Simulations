@@ -5,9 +5,33 @@
 ![License](https://img.shields.io/badge/License-MIT-green)
 [![DOI](https://img.shields.io/badge/DOI-10.1088/1402--4896/aeb753-blue)](https://doi.org/10.1088/1402-4896/aeb753)
 
+This repository provides LAMMPS input scripts and Python analysis tools developed for the study:
+
+> **Transformation Exclusion Zone and Stress-Induced Superelastic Response in Free-Standing NiTi nanoparticles: A Simulation Approach**  
+> Prudhvi Nallagatla, Pradhama Sai Eswar Kumar, Tubin Manuel, Ranjeet Kumar Sahu, Hemantha Kumar, and Debashisha Jena  
+> *Physica Scripta*, 2026. [https://doi.org/10.1088/1402-4896/aeb753](https://doi.org/10.1088/1402-4896/aeb753)
+
 ## Overview
 
-This repository contains LAMMPS input scripts and Python analysis tools to simulate the thermomechanical behavior of Nickel-Titanium (NiTi) nanoparticles. These models allow researchers to track solid-state phase transformations at the nanoscale, with a specific focus on the Shape Memory Effect (SME) and Superelasticity (SE).
+The provided molecular dynamics (MD) workflows enable researchers to track nanoscale solid-state phase transformations (austenite $\leftrightarrow$ martensite) in equiatomic NiTi nanoparticles. Key capabilities include:
+- Modeling size-dependent core–shell transformation dynamics and identifying surface transformation exclusion zones.
+- Simulating stress-induced superelasticity (SE) and thermally driven Shape Memory Effects (SME).
+- Automated Python routines for atomic trajectory parsing, B2/B19′ phase fractions, and hysteresis characterization.
+
+## Citation
+
+If you use these scripts or data in your research, please cite:
+
+```bibtex
+@article{Nallagatla2026NiTi,
+  author    = {Nallagatla, Prudhvi and Kumar, Pradhama Sai Eswar and Manuel, Tubin and Sahu, Ranjeet Kumar and Kumar, Hemantha and Jena, Debashisha},
+  title     = {Transformation Exclusion Zone and Stress-Induced Superelastic Response in Free-Standing NiTi nanoparticles: A Simulation Approach},
+  journal   = {Physica Scripta},
+  year      = {2026},
+  doi       = {10.1088/1402-4896/aeb753},
+  url       = {[https://doi.org/10.1088/1402-4896/aeb753](https://doi.org/10.1088/1402-4896/aeb753)}
+}
+```
 
 ## Theoretical Background
 
