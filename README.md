@@ -3,7 +3,7 @@
 ![LAMMPS](https://img.shields.io/badge/LAMMPS-stable__2Aug2023__update3-blue)
 ![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![DOI](https://img.shields.io/badge/DOI-Pending-lightgrey)
+[![DOI](https://img.shields.io/badge/DOI-10.1088/1402-4896/aeb753-blue)](https://doi.org/10.1088/1402-4896/aeb753)
 
 ## Overview
 
